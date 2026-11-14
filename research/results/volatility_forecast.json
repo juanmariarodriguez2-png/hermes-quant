@@ -1,0 +1,38 @@
+{
+  "close-to-close, EWMA hl 21 (RiskMetrics baseline)": {
+    "crypto_qlike": 0.6337917561892308,
+    "crypto_bias": 0.9812241877648011,
+    "fund_qlike": 0.44515170616167776,
+    "fund_bias": 1.0004972398679917
+  },
+  "close-to-close, EWMA hl 10": {
+    "crypto_qlike": 0.6558561633767338,
+    "crypto_bias": 0.9868411744232439,
+    "fund_qlike": 0.4601702444307268,
+    "fund_bias": 1.0002855302888949
+  },
+  "range blend, EWMA hl 21": {
+    "crypto_qlike": 0.6142641516174011,
+    "crypto_bias": 0.9658182784429759,
+    "fund_qlike": 0.44233567878212027,
+    "fund_bias": 0.9968866617760908
+  },
+  "range blend, EWMA hl 10": {
+    "crypto_qlike": 0.6178875426429958,
+    "crypto_bias": 0.973016396846854,
+    "fund_qlike": 0.433140831528186,
+    "fund_bias": 0.9966743976527151
+  },
+  "range blend, 0.7 x hl 21 + 0.3 x hl 126": {
+    "crypto_qlike": 0.6021505060227359,
+    "crypto_bias": 0.9607103497312655,
+    "fund_qlike": 0.4558154866457776,
+    "fund_bias": 0.9973315087758367
+  },
+  "range blend, 0.7 x hl 10 + 0.3 x hl 126 (adopted)": {
+    "crypto_qlike": 0.5767875385272229,
+    "crypto_bias": 0.965459788261716,
+    "fund_qlike": 0.43059575590306653,
+    "fund_bias": 0.9971814606555378
+  }
+}

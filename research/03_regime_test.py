@@ -1,0 +1,59 @@
+"""Step 3 — does the regime model know anything *in real time*?
+
+A hidden Markov model fitted on the full sample always looks clever: its turbulent
+state has terrible average returns. That is hindsight. The honest question is
+whether the walk-forward (out-of-sample) probability, as it stood each evening,
+says anything about the *next* session.
+
+Rule fixed before looking at the numbers: a sleeve gets the regime overlay only if
+the next-session Sharpe ratio in the turbulent bucket (P > 0.8) is less than half of
+the calm bucket's (P < 0.2). Design sample only.
+
+    python research/03_regime_test.py
+"""
+
+from __future__ import annotations
+
+import json
+
+import numpy as np
+import pandas as pd
+
+from common import RESULTS, load_panel, load_regime
+from hermes_quant.model import ModelConfig
+
+DESIGN_END = "2021-12-31"
+BUCKETS = [(0.0, 0.2), (0.2, 0.5), (0.5, 0.8), (0.8, 1.01)]
+
+
+def main() -> None:
+    panel = load_panel()
+    cfg = ModelConfig(regime_proxy={"equity": "SPY", "crypto": "BTC"})
+    probs = load_regime(panel, cfg)
+    usd = panel.close_usd
+    out = {}
+    for sleeve, proxy, per_year in (("equity", "SPY", 252), ("crypto", "BTC", 365)):
+        r = np.log(usd[proxy] / usd[proxy].shift(1)).where(panel.tradable[proxy])
+        sessions = r.dropna()
+        nxt = sessions.shift(-1).reindex(r.index)           # return of the following session
+        d = pd.DataFrame({"p": probs[sleeve], "next": nxt}).loc[:DESIGN_END].dropna()
+        rows = []
+        print(f"\n{sleeve} ({proxy}), {d.index[0].date()} .. {DESIGN_END}, n = {len(d)}")
+        for lo, hi in BUCKETS:
+            g = d[(d.p >= lo) & (d.p < hi)]["next"]
+            sr = float(g.mean() / g.std() * np.sqrt(per_year))
+            rows.append({"bucket": f"[{lo:.1f}, {min(hi, 1.0):.1f})", "n": int(len(g)),
+                         "mean_daily_pct": float(g.mean() * 100), "vol_daily_pct": float(g.std() * 100),
+                         "annual_sharpe": sr})
+            print(f"  P(turbulent) in [{lo:.1f}, {min(hi, 1.0):.1f}): n = {len(g):5d}  "
+                  f"mean {g.mean() * 100:7.3f}%/day  vol {g.std() * 100:5.2f}%/day  Sharpe {sr:5.2f}")
+        calm, turbulent = rows[0]["annual_sharpe"], rows[-1]["annual_sharpe"]
+        keep = bool(turbulent < 0.5 * calm)
+        print(f"  -> overlay {'KEPT' if keep else 'DROPPED'} for this sleeve "
+              f"(turbulent Sharpe {turbulent:.2f} vs calm {calm:.2f})")
+        out[sleeve] = {"proxy": proxy, "buckets": rows, "overlay_kept": keep}
+    (RESULTS / "regime_test.json").write_text(json.dumps(out, indent=2))
+
+
+if __name__ == "__main__":
+    main()

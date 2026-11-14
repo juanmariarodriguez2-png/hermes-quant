@@ -1,0 +1,5 @@
+-r requirements.txt
+pyarrow>=15
+yfinance>=0.2.50
+matplotlib>=3.8
+pytest>=8

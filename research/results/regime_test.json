@@ -1,0 +1,70 @@
+{
+  "equity": {
+    "proxy": "SPY",
+    "buckets": [
+      {
+        "bucket": "[0.0, 0.2)",
+        "n": 2380,
+        "mean_daily_pct": 0.04173098767327255,
+        "vol_daily_pct": 0.7447885054999756,
+        "annual_sharpe": 0.8894590708630485
+      },
+      {
+        "bucket": "[0.2, 0.5)",
+        "n": 276,
+        "mean_daily_pct": 0.11758673852134904,
+        "vol_daily_pct": 1.1582885836608425,
+        "annual_sharpe": 1.611542781282024
+      },
+      {
+        "bucket": "[0.5, 0.8)",
+        "n": 344,
+        "mean_daily_pct": 0.02985084919629058,
+        "vol_daily_pct": 1.4948738486874014,
+        "annual_sharpe": 0.3169950031575911
+      },
+      {
+        "bucket": "[0.8, 1.0)",
+        "n": 777,
+        "mean_daily_pct": 0.012082543795963095,
+        "vol_daily_pct": 2.1755090830413737,
+        "annual_sharpe": 0.08816531175629223
+      }
+    ],
+    "overlay_kept": true
+  },
+  "crypto": {
+    "proxy": "BTC",
+    "buckets": [
+      {
+        "bucket": "[0.0, 0.2)",
+        "n": 553,
+        "mean_daily_pct": 0.2053732980936742,
+        "vol_daily_pct": 3.6022600755293164,
+        "annual_sharpe": 1.0892193424625194
+      },
+      {
+        "bucket": "[0.2, 0.5)",
+        "n": 335,
+        "mean_daily_pct": 0.24381522416284024,
+        "vol_daily_pct": 3.9890678320921107,
+        "annual_sharpe": 1.1677122358516574
+      },
+      {
+        "bucket": "[0.5, 0.8)",
+        "n": 399,
+        "mean_daily_pct": 0.23981554887007125,
+        "vol_daily_pct": 4.378722972289175,
+        "annual_sharpe": 1.0463483661780262
+      },
+      {
+        "bucket": "[0.8, 1.0)",
+        "n": 680,
+        "mean_daily_pct": 0.2190756786145507,
+        "vol_daily_pct": 4.598470428171789,
+        "annual_sharpe": 0.9101798148976574
+      }
+    ],
+    "overlay_kept": false
+  }
+}

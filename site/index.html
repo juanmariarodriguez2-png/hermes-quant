@@ -107,7 +107,8 @@ table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 th { text-align: left; font: 500 11px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding: 6px 10px 8px 0; border-bottom: 1px solid var(--axis); white-space: nowrap; }
 td { padding: 8px 10px 8px 0; border-bottom: 1px solid var(--hair); vertical-align: middle; }
 tr:last-child td { border-bottom: 0; }
-td.r, th.r { text-align: right; padding-right: 0; padding-left: 10px; }
+td.r, th.r { text-align: right; padding-left: 10px; padding-right: 18px; }
+tr > td:last-child, tr > th:last-child { padding-right: 0; }
 td.num { white-space: nowrap; }
 tr.lead td { font-weight: 600; }
 .asset { display: grid; gap: 1px; min-width: 9ch; } .asset b { font-weight: 500; } .asset span { font: 400 11.5px/1.2 var(--mono); color: var(--muted); }
@@ -213,7 +214,7 @@ footer p + p { margin-top: 6px; }
   <div class="head"><div class="eyebrow" data-t="ev.eyebrow"></div><h2 data-t="ev.title"></h2><p class="lede" data-t="ev.lede"></p></div>
   <div class="grid">
     <div class="card"><div class="tools"><h3 data-t="ev.curve"></h3><button class="toggle" id="scaleToggle" type="button"></button></div>
-      <p class="sub" data-t="ev.curveSub"></p><div class="legend" id="curveLegend"></div><div class="chart" id="curveChart"></div></div>
+      <p class="sub" data-t="ev.curveSub"></p><div class="legend" id="curveLegend"></div><div class="chart" id="curveChart"></div><p class="note" id="curveBtc"></p></div>
     <div class="card c7"><h3 data-t="ev.table"></h3><p class="sub" data-t="ev.tableSub"></p><div class="scroll"><table id="metrics"></table></div><p class="note" id="metricsNote"></p></div>
     <div class="card c5"><h3 data-t="ev.conf"></h3><p class="sub" data-t="ev.confSub"></p><div id="conf"></div></div>
     <div class="card c6"><h3 data-t="ev.dd"></h3><p class="sub" data-t="ev.ddSub"></p><div class="legend" id="ddLegend"></div><div class="chart" id="ddChart"></div></div>
@@ -250,7 +251,11 @@ es: {
  "hero.lede": "Hermes Quant decide cada día cuánto tener en acciones, oro, plata y criptomonedas con reglas fijas y públicas. No predice titulares: estima tendencias, filtra ruido y reparte riesgo. Esta página enseña lo que ve hoy, lo que tiene y la evidencia que lo respalda.",
  "acct.label": "Valor de la cuenta", "acct.since": "desde el", "acct.vs": "En el mismo periodo",
  "t.invested": "Invertido", "t.cash": "en liquidez", "t.regime": "Bolsa: régimen", "t.pturb": "prob. de turbulencia",
- "t.risk": "Riesgo previsto", "t.target": "objetivo", "t.noise": "Ruido descartado", "t.noiseD": "de la matriz de correlaciones",
+ "t.risk": "Riesgo previsto", "t.target": "objetivo", "t.noise": "Factores reales detectados", "t.noiseD": "el {s} restante de la varianza es ruido", "t.of": "de",
+ "rmt.factor": "Factor {i}", "rmt.share": "del riesgo",
+ "ev.context": "Contexto · variantes no elegidas, mismo examen", "ctx.rule": "Cripto siempre en cartera (lo que elegía la regla mecánica)", "ctx.trend": "Filtro de tendencia en todo", "ctx.noreg": "Sin detector de régimen", "ctx.wide": "Con los 4 fondos sin liquidez (no invertible)",
+ "old.noiseNote": "Un stop dentro del ruido diario no protege: convierte la volatilidad normal en una pérdida casi segura, más dos comisiones.",
+ "ev.curveBtc": "Bitcoin queda fuera de esta escala (100 € pasaron a unos {v}, con caídas del 80 % por el camino); está en la tabla y en el gráfico de caídas.",
  "regime.calm": "Calma", "regime.mixed": "Transición", "regime.turb": "Turbulencia",
  "see.eyebrow": "Hoy", "see.title": "Lo que el modelo ve",
  "see.lede": "Tres cosas que un gráfico de precios no enseña: la probabilidad de que la tendencia de fondo sea alcista, el estado oculto del mercado y cuánta de la correlación aparente es puro ruido.",
@@ -258,7 +263,7 @@ es: {
  "see.tableNote": "P(tendencia ↑) sale de un banco de filtros de Kalman sobre rentabilidades normalizadas por volatilidad: no es una opinión, es la probabilidad posterior de que la deriva latente sea positiva. La línea azul del minigráfico es el precio sin ruido que estima el filtro.",
  "col.asset": "Activo", "col.sleeve": "Bloque", "col.prob": "P(tendencia ↑)", "col.vol": "Volatilidad", "col.trend": "Precio y tendencia · 1 año",
  "col.m1": "30 días", "col.target": "Peso objetivo", "col.state": "Estado",
- "sleeve.equity": "Acciones", "sleeve.real": "Metales", "sleeve.crypto": "Cripto", "sleeve.cash": "Liquidez",
+ "sleeve.equity": "Acciones", "sleeve.real": "Activos reales", "sleeve.crypto": "Cripto", "sleeve.cash": "Liquidez",
  "st.hold": "En cartera", "st.none": "Sin tendencia", "st.out": "Fuera del top 4", "st.illiq": "Sin liquidez en Kraken", "st.core": "Solo núcleo",
  "regime.title": "Estado oculto de la bolsa",
  "regime.sub": "Un modelo de Markov oculto estima, solo con datos pasados, la probabilidad de estar en el régimen turbulento del S&P 500.",
@@ -293,9 +298,10 @@ es: {
  "ev.conf": "¿Suerte o método?", "ev.confSub": "Lo que dicen las pruebas estadísticas, sin maquillar.",
  "conf.ci": "Sharpe del examen a ciegas, intervalo al 95 %", "conf.ciD": "bootstrap por bloques, {n} remuestreos",
  "conf.neg": "Remuestreos con Sharpe ≤ 0", "conf.negD": "cuanto más bajo, menos probable que sea azar",
- "conf.dsr": "Sharpe deflactado (diseño)", "conf.dsrD": "probabilidad de ventaja real tras descontar {n} variantes probadas",
- "conf.pbo": "Riesgo de sobreajuste", "conf.pboD": "frecuencia con que la mejor variante en una mitad queda en la peor mitad en la otra",
- "conf.alpha": "Alfa anual frente a bolsa y bitcoin", "conf.alphaD": "regresión semanal, errores Newey-West; t = {t}",
+ "conf.keep": "Sharpe: diseño → examen a ciegas", "conf.keepD": "no se degradó al salir de los datos con los que se diseñó",
+ "conf.dsr": "Sharpe deflactado (diseño)", "conf.dsrD": "probabilidad de ventaja real tras descontar {n} intentos, tratados como independientes",
+ "conf.pbo": "Ranking entre variantes: inestable", "conf.pboD": "la mejor variante en media muestra cae en la mitad mala de la otra con esta frecuencia. Elegir por «mejor backtest» sería azar, y por eso no se eligió así",
+ "conf.alpha": "Alfa anual frente a bolsa, oro y bitcoin", "conf.alphaD": "t = {t}: no es significativa. El modelo no adivina el mercado; reparte y controla el riesgo",
  "ev.dd": "Caídas desde máximos", "ev.ddSub": "Cuánto se pierde en el peor momento. Es la métrica que decide si uno aguanta la estrategia.",
  "ev.years": "Año a año", "ev.yearsSub": "Rentabilidad de Hermes frente al S&P 500 en euros.",
  "ev.stress": "En las crisis", "ev.stressSub": "Rentabilidad en cada episodio.", "col.episode": "Episodio",
@@ -335,7 +341,11 @@ en: {
  "hero.lede": "Every day Hermes Quant decides how much to hold in equities, gold, silver and crypto, using fixed, public rules. It does not predict headlines: it estimates trends, filters noise and budgets risk. This page shows what it sees today, what it holds and the evidence behind it.",
  "acct.label": "Account value", "acct.since": "since", "acct.vs": "Over the same period",
  "t.invested": "Invested", "t.cash": "in cash", "t.regime": "Equities: regime", "t.pturb": "probability of turbulence",
- "t.risk": "Forecast risk", "t.target": "target", "t.noise": "Noise discarded", "t.noiseD": "of the correlation matrix",
+ "t.risk": "Forecast risk", "t.target": "target", "t.noise": "Real factors detected", "t.noiseD": "the remaining {s} of variance is noise", "t.of": "of",
+ "rmt.factor": "Factor {i}", "rmt.share": "of risk",
+ "ev.context": "Context · variants not chosen, same exam", "ctx.rule": "Crypto always held (what the mechanical rule picked)", "ctx.trend": "Trend filter on everything", "ctx.noreg": "No regime detector", "ctx.wide": "With the 4 illiquid funds (not investable)",
+ "old.noiseNote": "A stop inside daily noise does not protect: it turns ordinary volatility into a near-certain loss, plus two commissions.",
+ "ev.curveBtc": "Bitcoin does not fit this scale (€100 became about {v}, with 80% drawdowns on the way); it is in the table and the drawdown chart.",
  "regime.calm": "Calm", "regime.mixed": "Transition", "regime.turb": "Turbulent",
  "see.eyebrow": "Today", "see.title": "What the model sees",
  "see.lede": "Three things a price chart cannot show: the probability that the underlying trend is up, the market's hidden state, and how much of the apparent correlation is pure noise.",
@@ -343,7 +353,7 @@ en: {
  "see.tableNote": "P(trend ↑) comes from a bank of Kalman filters on volatility-normalised returns: not an opinion, but the posterior probability that the latent drift is positive. The blue line in the sparkline is the denoised price the filter estimates.",
  "col.asset": "Asset", "col.sleeve": "Sleeve", "col.prob": "P(trend ↑)", "col.vol": "Volatility", "col.trend": "Price and trend · 1 year",
  "col.m1": "30 days", "col.target": "Target weight", "col.state": "Status",
- "sleeve.equity": "Equities", "sleeve.real": "Metals", "sleeve.crypto": "Crypto", "sleeve.cash": "Cash",
+ "sleeve.equity": "Equities", "sleeve.real": "Real assets", "sleeve.crypto": "Crypto", "sleeve.cash": "Cash",
  "st.hold": "Held", "st.none": "No trend", "st.out": "Outside top 4", "st.illiq": "Illiquid on Kraken", "st.core": "Core only",
  "regime.title": "Hidden state of the stock market",
  "regime.sub": "A hidden Markov model estimates, from past data only, the probability that the S&P 500 is in its turbulent regime.",
@@ -378,9 +388,10 @@ en: {
  "ev.conf": "Luck or method?", "ev.confSub": "What the statistical tests say, unvarnished.",
  "conf.ci": "Blind-exam Sharpe, 95% interval", "conf.ciD": "block bootstrap, {n} resamples",
  "conf.neg": "Resamples with Sharpe ≤ 0", "conf.negD": "the lower, the less likely it is chance",
- "conf.dsr": "Deflated Sharpe (design)", "conf.dsrD": "probability of a real edge after discounting {n} variants tried",
- "conf.pbo": "Overfitting risk", "conf.pboD": "how often the best variant in one half lands in the worse half of the other",
- "conf.alpha": "Annual alpha vs stocks and bitcoin", "conf.alphaD": "weekly regression, Newey-West errors; t = {t}",
+ "conf.keep": "Sharpe: design → blind exam", "conf.keepD": "no decay once outside the data it was designed on",
+ "conf.dsr": "Deflated Sharpe (design)", "conf.dsrD": "probability of a real edge after discounting {n} attempts, treated as independent",
+ "conf.pbo": "Ranking among variants: unstable", "conf.pboD": "how often the best variant on half the sample lands in the worse half of the other. Picking by best backtest would be chance, which is why it was not done",
+ "conf.alpha": "Annual alpha vs stocks, gold and bitcoin", "conf.alphaD": "t = {t}: not significant. The model does not outguess the market; it budgets and controls risk",
  "ev.dd": "Drawdowns", "ev.ddSub": "How much is lost at the worst moment. This is the number that decides whether you can stay with a strategy.",
  "ev.years": "Year by year", "ev.yearsSub": "Hermes versus the S&P 500 in euros.",
  "ev.stress": "In the crises", "ev.stressSub": "Return in each episode.", "col.episode": "Episode",
@@ -413,6 +424,8 @@ en: {
  "foot.b": "Data: Kraken, Binance public archive, Coinbase, Yahoo Finance, ECB. Independent code review with OpenAI Codex.",
  "table": "Show table", "chart": "Show chart", "loading": "Loading data…", "nodata": "Data not available.",
 }};
+const NAME_ES = {"Europe equities": "Bolsa europea", "US small caps": "Small caps EE. UU.", "Emerging markets": "Emergentes", "Gold": "Oro", "Silver": "Plata", "Energy": "Energía"};
+const nm = (n) => (lang === "es" && NAME_ES[n]) || n;
 const STRESS_ES = {"Global financial crisis": "Crisis financiera 2008", "Crypto winter 2018": "Invierno cripto 2018", "COVID crash": "Desplome COVID", "2022 bear market (rates, Terra, FTX)": "Mercado bajista 2022 (tipos, Terra, FTX)", "April 2025 tariff shock": "Choque arancelario abr. 2025", "Crypto slide 2025-26": "Caída cripto 2025-26"};
 const ABL_ES = {"C baseline (frozen candidate)": "Modelo completo", "no RMT cleaning": "Sin limpieza de matrices aleatorias", "inverse-vol instead of HRP": "Paridad simple en vez de jerárquica", "classic TSMOM instead of Kalman": "Momentum clásico en vez de Kalman", "close-to-close vol instead of range": "Volatilidad de cierres en vez de rango", "regime overlay off": "Sin detector de régimen", "crypto top-2": "Cripto: solo las 2 más líquidas", "crypto top-8": "Cripto: las 8 más líquidas", "execution lag 0": "Ejecución sin retraso", "execution lag 2": "Ejecución con 2 días de retraso", "decide daily": "Decisión diaria", "decide monthly": "Decisión mensual", "no partial rebalance (trade to target)": "Sin ajuste parcial", "all costs doubled": "Todos los costes al doble", "zero costs": "Sin costes", "crypto at maker fee 0.40%": "Cripto con comisión maker 0,40 %"};
 const ABL_EN = {"C baseline (frozen candidate)": "Full model", "no RMT cleaning": "No random-matrix cleaning", "inverse-vol instead of HRP": "Plain parity instead of hierarchical", "classic TSMOM instead of Kalman": "Classic momentum instead of Kalman", "close-to-close vol instead of range": "Close-to-close instead of range volatility", "regime overlay off": "No regime detector", "crypto top-2": "Crypto: 2 most liquid only", "crypto top-8": "Crypto: 8 most liquid", "execution lag 0": "No execution delay", "execution lag 2": "2-day execution delay", "decide daily": "Daily decisions", "decide monthly": "Monthly decisions", "no partial rebalance (trade to target)": "No partial rebalancing", "all costs doubled": "All costs doubled", "zero costs": "Zero costs", "crypto at maker fee 0.40%": "Crypto at 0.40% maker fee"};
@@ -643,7 +656,7 @@ function renderLive() {
     h("div", { class: "tile" }, h("div", { class: "k", text: T("t.invested") }), h("div", { class: "v", text: pct(a.invested_pct, 0) }), h("div", { class: "meter" }, h("span", { style: `width:${Math.min(100, a.invested_pct * 100)}%` })), h("div", { class: "d", text: `${eur(a.cash)} ${T("t.cash")}` })),
     h("div", { class: "tile" }, h("div", { class: "k", text: T("t.regime") }), h("div", { class: "v" }, h("span", { class: "pill " + regCls, style: "font-size:13px" }, h("i"), T(regName))), h("div", { class: "d", text: `${pct(p, 0)} ${T("t.pturb")}` })),
     h("div", { class: "tile" }, h("div", { class: "k", text: T("t.risk") }), h("div", { class: "v", text: pct(risk.predicted_vol, 1) }), h("div", { class: "meter" }, h("span", { style: `width:${Math.min(100, risk.predicted_vol / risk.target_vol * 100)}%` })), h("div", { class: "d", text: `${T("t.target")} ${pct(risk.target_vol, 0)}` })),
-    h("div", { class: "tile" }, h("div", { class: "k", text: T("t.noise") }), h("div", { class: "v", text: pct(risk.noise_share ?? null, 0) }), h("div", { class: "d", text: T("t.noiseD") })),
+    h("div", { class: "tile" }, h("div", { class: "k", text: T("t.noise") }), h("div", { class: "v", text: `${risk.n_signal ?? "—"} ${T("t.of")} ${risk.n_assets ?? "—"}` }), h("div", { class: "d", text: T("t.noiseD", { s: pct(risk.noise_share ?? null, 0) }) })),
   );
 
   /* asset table */
@@ -656,7 +669,7 @@ function renderLive() {
     const up = r.prob_up >= 0.5, w = Math.abs(r.prob_up - 0.5) * 100;
     const state = !r.venue_liquid ? ["st.illiq", ""] : !r.eligible ? ["st.out", ""] : r.target > 0.0005 ? (r.score < 0.05 ? ["st.core", "info"] : ["st.hold", "good"]) : ["st.none", ""];
     body.append(h("tr", {},
-      h("td", {}, h("div", { class: "asset" }, h("b", { text: r.name }), h("span", { text: r.symbol }))),
+      h("td", {}, h("div", { class: "asset" }, h("b", { text: nm(r.name) }), h("span", { text: r.symbol }))),
       h("td", {}, h("span", { class: "dot", style: `background:${css(SLEEVE[r.class])}` }), T("sleeve." + r.class)),
       h("td", {}, h("div", { class: "prob" }, h("div", { class: "track" }, h("div", { class: "fill", style: `${up ? "left:50%" : `right:50%`};width:${w}%;background:${css(up ? "--accent" : "--c-neg")}` })), h("span", { class: "num", text: pct(r.prob_up, 0) }))),
       h("td", { class: "r num", text: pct(r.vol, 0) }),
@@ -696,6 +709,9 @@ function renderLive() {
     eg.prepend(h("div", { class: "legend" }, h("span", {}, h("i", { class: "box", style: `background:${css("--accent")}` }), T("rmt.signal")), h("span", {}, h("i", { class: "box", style: `background:${css("--c-idle")}` }), T("rmt.noise"))));
     eg.append(svg);
     $("#eigNote").textContent = T("rmt.note", { k: risk.n_signal ?? 0, n: ev.length, s: pct(risk.noise_share, 0) });
+    const fl = h("div", { style: "margin-top:12px;display:grid;gap:0" });
+    (risk.factors || []).forEach((f, i) => fl.append(h("div", { style: "display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--hair);font-size:13.5px" }, h("span", { class: "mono muted", style: "font-size:11.5px", text: T("rmt.factor", { i: i + 1 }) }), h("span", { text: f.assets.join(" · ") }), h("b", { class: "num", text: `${pct(f.share, 0)} ${T("rmt.share")}` }))));
+    eg.append(fl);
   }
   renderHeat();
 
@@ -704,7 +720,7 @@ function renderLive() {
   const pt = $("#positions"); pt.replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("col.asset") }), h("th", { class: "r", text: T("col.value") }), h("th", { class: "r", text: T("col.weight") }), h("th", { class: "r", text: T("col.target") }), h("th", { class: "r", text: T("col.gap") }))));
   const pb = h("tbody");
   const pos = [...a.positions].sort((x, y) => y.target - x.target);
-  for (const r of pos) pb.append(h("tr", {}, h("td", {}, h("span", { class: "dot", style: `background:${css(SLEEVE[r.class])}` }), r.name, " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "r num", text: eur(r.value) }), h("td", { class: "r num", text: pct(r.weight, 1) }), h("td", { class: "r num", text: pct(r.target, 1) }), h("td", { class: "r num", text: pct(r.target - r.weight, 1, true) })));
+  for (const r of pos) pb.append(h("tr", {}, h("td", {}, h("span", { class: "dot", style: `background:${css(SLEEVE[r.class])}` }), nm(r.name), " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "r num", text: eur(r.value) }), h("td", { class: "r num", text: pct(r.weight, 1) }), h("td", { class: "r num", text: pct(r.target, 1) }), h("td", { class: "r num", text: pct(r.target - r.weight, 1, true) })));
   const tw = pos.reduce((x, r) => x + r.target, 0);
   pb.append(h("tr", { class: "lead" }, h("td", {}, h("span", { class: "dot", style: `background:${css("--c-idle")}` }), T("sleeve.cash")), h("td", { class: "r num", text: eur(a.cash) }), h("td", { class: "r num", text: pct(a.nav ? a.cash / a.nav : 1, 1) }), h("td", { class: "r num", text: pct(1 - tw, 1) }), h("td", { class: "r num", text: pct((1 - tw) - (a.nav ? a.cash / a.nav : 1), 1, true) })));
   pt.append(pb);
@@ -743,10 +759,13 @@ function renderResearch() {
   if (!RES) return;
   const end = RES.generated_from.end, split = RES.generated_from.split;
   const S = [["hermes", "s.hermes", "--accent"], ["bitcoin", "s.bitcoin", "--c-crypto"], ["sp500", "s.sp500", "--c-equity"]];
-  legend($("#curveLegend"), S.map(x => ({ name: T(x[1]), color: x[2] })));
+  const C = [["hermes", "s.hermes", "--accent"], ["sp500", "s.sp500", "--c-equity"], ["mix6040", "s.mix", "--c-real"]];
+  legend($("#curveLegend"), C.map(x => ({ name: T(x[1]), color: x[2] })));
+  const btcEnd = RES.equity_since_2017.bitcoin.at(-1)[1] * 100;
+  $("#curveBtc").textContent = T("ev.curveBtc", { v: eur(Math.round(btcEnd / 100) * 100, 0) });
   $("#scaleToggle").textContent = T(logScale ? "ev.log" : "ev.lin");
   lineChart($("#curveChart"), { height: 340, log: logScale, shade: ts(split), shadeLabel: T("ev.hold"), yFmt: (v) => new Intl.NumberFormat(loc(), { notation: v >= 10000 ? "compact" : "standard", maximumFractionDigits: 0 }).format(v), tipFmt: (v) => eur(v, 0), label: T("ev.curve"),
-    series: S.map(x => ({ name: T(x[1]), color: x[2], data: RES.equity_since_2017[x[0]].map(d => [ts(d[0]), d[1] * 100]) })) });
+    series: C.map((x, i) => ({ name: T(x[1]), color: x[2], thin: i > 0, data: RES.equity_since_2017[x[0]].map(d => [ts(d[0]), d[1] * 100]) })) });
   legend($("#ddLegend"), S.map(x => ({ name: T(x[1]), color: x[2] })));
   lineChart($("#ddChart"), { height: 240, yMax: 0, zero: 0, yFmt: (v) => pct(v, 0), label: T("ev.dd"), series: S.map((x, i) => ({ name: T(x[1]), color: x[2], thin: i > 0, area: i === 0, data: RES.drawdown_since_2017[x[0]].map(d => [ts(d[0]), d[1]]) })) });
 
@@ -754,16 +773,19 @@ function renderResearch() {
   const P = RES.profiles, B = RES.benchmarks, mt = $("#metrics");
   const cell = (st, k, d = 1) => h("td", { class: "r num", text: st ? pct(st[k], d) : "—" });
   const sh = (st) => h("td", { class: "r num", text: st ? `${num(st.sharpe, 2)} (${num(st.sharpe_excess, 2)})` : "—" });
-  const block = (title, key, rows) => [h("tr", {}, h("th", { colspan: 5, text: title, style: "padding-top:14px" })), ...rows.filter(r => r[1] && r[1][key]).map((r, i) => h("tr", { class: i === 0 ? "lead" : null }, h("td", {}, r[2] ? h("span", { class: "dot", style: `background:${css(r[2])}` }) : null, r[0]), cell(r[1][key], "cagr"), cell(r[1][key], "vol"), sh(r[1][key]), cell(r[1][key], "max_drawdown")))];
+  const X = RES.context || {};
+  const block = (title, key, rows, plain) => [h("tr", {}, h("th", { colspan: 5, text: title, style: "padding-top:14px" })), ...rows.filter(r => r[1] && r[1][key]).map((r, i) => h("tr", { class: i === 0 && !plain ? "lead" : null }, h("td", {}, r[2] ? h("span", { class: "dot", style: `background:${css(r[2])}` }) : null, r[0]), cell(r[1][key], "cagr"), cell(r[1][key], "vol"), sh(r[1][key]), cell(r[1][key], "max_drawdown")))];
   mt.replaceChildren(h("thead", {}, h("tr", {}, h("th", {}), h("th", { class: "r", text: T("col.cagr") }), h("th", { class: "r", text: T("col.volS") }), h("th", { class: "r", text: T("col.sharpe") }), h("th", { class: "r", text: T("col.dd") }))),
     h("tbody", {}, ...block(T("ev.holdout", { y: end.slice(0, 4) }), "holdout", [[T("s.hermes"), P.balanced, "--accent"], [T("s.growth"), P.growth, null], [T("s.sp500"), B["S&P 500 buy & hold (EUR)"], "--c-equity"], [T("s.mix"), B["60% S&P 500 / 40% gold"], null], [T("s.bitcoin"), B["Bitcoin buy & hold"], "--c-crypto"]]),
-      ...block(T("ev.design"), "design", [[T("s.hermes"), P.balanced, "--accent"], [T("s.growth"), P.growth, null]])));
+      ...block(T("ev.design"), "design", [[T("s.hermes"), P.balanced, "--accent"], [T("s.growth"), P.growth, null]]),
+      ...block(T("ev.context"), "holdout", [[T("ctx.rule"), X["what the mechanical rule picked (crypto always held)"], null], [T("ctx.trend"), X["trend filter on everything"], null], [T("ctx.noreg"), X["no regime overlay"], null], [T("ctx.wide"), X["same model, if the four illiquid funds could be traded"], null]].map(r => [r[0], r[1], r[2]]), true)));
   $("#metricsNote").textContent = T("ev.metricsNote");
 
   /* confidence */
   const inf = RES.inference, hb = inf.holdout_bootstrap, mm = RES.market_model.holdout, cf = $("#conf");
   const item = (k, v, d) => h("div", { style: "padding:9px 0;border-bottom:1px solid var(--hair)" }, h("div", { class: "ink2", style: "font-size:13px", text: k }), h("div", { style: "font-size:20px;font-weight:600;line-height:1.3", text: v }), h("div", { class: "muted", style: "font-size:12px", text: d }));
   cf.replaceChildren(
+    item(T("conf.keep"), `${num(P.balanced.design.sharpe, 2)} → ${num(P.balanced.holdout.sharpe, 2)}`, T("conf.keepD")),
     item(T("conf.ci"), `${num(hb.sharpe["p2.5"], 2)} — ${num(hb.sharpe["p97.5"], 2)}`, T("conf.ciD", { n: num(hb.n_boot, 0) })),
     item(T("conf.neg"), pct(hb.share_resamples_sharpe_below_zero, 1), T("conf.negD")),
     item(T("conf.dsr"), pct(inf.design_deflated_sharpe.dsr, 0), T("conf.dsrD", { n: inf.design_deflated_sharpe.n_trials })),
@@ -804,6 +826,7 @@ function renderResearch() {
   const nz = $("#noise"); nz.replaceChildren();
   for (const tr of L.trades) nz.append(h("div", { style: "padding:10px 0;border-bottom:1px solid var(--hair)" }, h("div", { style: "display:flex;justify-content:space-between;gap:10px;align-items:baseline" }, h("b", { text: tr.asset }), h("span", { style: "font-size:22px;font-weight:600", text: pct(tr.noise_hit_prob, 0) })), h("div", { class: "meter" }, h("span", { style: `width:${(tr.noise_hit_prob || 0) * 100}%;background:${css("--serious")}` })), h("div", { class: "muted", style: "font-size:12px;margin-top:4px", text: T("old.noiseRow", { d: pct(tr.stop_distance, 1), v: pct(tr.daily_vol, 1) }) })));
   if (nz.lastElementChild) nz.lastElementChild.style.borderBottom = "0";
+  nz.append(h("p", { class: "note", text: T("old.noiseNote") }));
 }
 
 function renderAll() { renderStatic(); renderLive(); renderResearch(); }

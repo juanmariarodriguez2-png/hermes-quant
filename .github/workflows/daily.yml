@@ -1,0 +1,66 @@
+name: Hermes daily run
+
+# Runs every night shortly after the daily candles close (00:00 UTC). GitHub's
+# scheduler can be several minutes late; the model does not care.
+on:
+  schedule:
+    - cron: "23 0 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: hermes-daily
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Model, orders, dashboard data
+        env:
+          # paper | live. Leave unset for paper trading.
+          HERMES_MODE: ${{ vars.HERMES_MODE || 'paper' }}
+          HERMES_PROFILE: ${{ vars.HERMES_PROFILE || 'balanced' }}
+          # Real orders are only sent when this repository variable is exactly "yes".
+          HERMES_LIVE_ARMED: ${{ vars.HERMES_LIVE_ARMED || 'no' }}
+          HERMES_MAX_ORDER_EUR: ${{ vars.HERMES_MAX_ORDER_EUR || '100' }}
+          KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
+          KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python -m hermes_quant.live.run_daily
+
+      - name: Save state back to the repository
+        run: |
+          git config user.name "hermes-bot"
+          git config user.email "hermes-bot@users.noreply.github.com"
+          git add data/live site/live.json
+          git diff --cached --quiet || git commit -m "daily run $(date -u +%F)"
+          git push
+
+      # Publishing the dashboard needs GitHub Pages (free on public repositories). On a
+      # private repository these steps fail harmlessly; trading state is already saved.
+      - uses: actions/configure-pages@v5
+        continue-on-error: true
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        continue-on-error: true
+        with:
+          path: site
+      - uses: actions/deploy-pages@v4
+        continue-on-error: true

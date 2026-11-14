@@ -76,10 +76,23 @@ def expected_max_sharpe(n_trials: int, trials_sr_std: float) -> float:
     return float(trials_sr_std * ((1.0 - EULER_GAMMA) * a + EULER_GAMMA * b))
 
 
-def deflated_sharpe(r: np.ndarray, n_trials: int, trials_sr_std: float) -> dict:
+def deflated_sharpe(r: np.ndarray, n_trials: int, trials_sr_std: float | None = None) -> dict:
     """Deflated Sharpe Ratio: the probability that the selected strategy's true Sharpe
-    is positive *after* discounting for having been picked out of ``n_trials``."""
-    hurdle = expected_max_sharpe(n_trials, trials_sr_std)
+    is positive *after* discounting for having been picked out of ``n_trials``.
+
+    The hurdle is the best Sharpe one would expect from ``n_trials`` strategies with no
+    edge at all. Its size depends on how much those trials differ from one another:
+
+    * ``trials_sr_std`` given: the dispersion actually observed across the trials
+      (Bailey & Lopez de Prado's original recipe). When the trials are close cousins
+      of one model this dispersion is tiny and the hurdle is lenient.
+    * ``trials_sr_std=None``: every trial is treated as an *independent* zero-edge
+      strategy, whose Sharpe estimate has standard deviation 1/sqrt(T-1). This is the
+      harshest reasonable penalty and is the figure reported as the headline.
+    """
+    r = np.asarray(r, dtype=float)
+    dispersion = trials_sr_std if trials_sr_std is not None else 1.0 / np.sqrt(len(r) - 1.0)
+    hurdle = expected_max_sharpe(n_trials, dispersion)
     return {"dsr": probabilistic_sharpe(r, hurdle), "hurdle_sr_per_period": hurdle,
             "psr_vs_zero": probabilistic_sharpe(r, 0.0), "n_trials": n_trials}
 

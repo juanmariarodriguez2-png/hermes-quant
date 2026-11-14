@@ -25,6 +25,7 @@ TELEGRAM_BOT_TOKEN/CHAT_ID  optional daily message
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -119,11 +120,13 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     state = load_state(state_path, float(os.environ.get("HERMES_CAPITAL", "233.47")), profile, mode)
     allocation = target_weights(features, cfg, t)
     age = None if not state["target_date"] else (bar_date - pd.Timestamp(state["target_date"])).days
-    refreshed = age is None or age >= rules.rebalance_every or state.get("profile") != profile
+    fingerprint = hashlib.sha256(repr(cfg).encode()).hexdigest()[:12]      # a changed model means a new target
+    refreshed = age is None or age >= rules.rebalance_every or state.get("model") != fingerprint
     if refreshed:
         state["target"] = {s: float(w) for s, w in allocation.weights.items() if abs(w) > 1e-9}
         state["target_date"] = bar
         state["profile"] = profile
+        state["model"] = fingerprint
 
     # 4. account, risk checks, orders ---------------------------------------------------
     prices, eurusd, price_source = current_prices(instruments, panel.close.iloc[t], offline)

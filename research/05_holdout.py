@@ -1,4 +1,9 @@
-"""Step 5 — the exam. Run ONCE, after every design decision is frozen.
+"""Step 5 — the exam. Opened ONCE, after every design decision was frozen.
+
+(The script is deterministic: re-running it reproduces the same equity curve. What
+"once" forbids is changing the model after seeing these numbers. The only edits made
+after the first run were to reporting: a harsher Deflated Sharpe convention and a
+third regression factor, both of which make the result look less impressive.)
 
 The model is simulated as one continuous account from 2007 to the last available
 day. Everything up to 2021-12-31 was used to design it (see 04_design_sample.py);
@@ -140,7 +145,10 @@ def main() -> None:
             for block in (5.0, 10.0, 40.0, 80.0)},
         # secondary: closed-form, with a conservative autocorrelation correction
         "holdout_psr_vs_zero": stats.probabilistic_sharpe(hold_weekly, 0.0),
-        "design_deflated_sharpe": stats.deflated_sharpe(design_weekly, n_trials, sr_dispersion),
+        # headline: every attempt treated as an independent no-edge strategy (harshest)
+        "design_deflated_sharpe": stats.deflated_sharpe(design_weekly, n_trials),
+        # original recipe: dispersion observed across the (closely related) attempts
+        "design_deflated_sharpe_observed_dispersion": stats.deflated_sharpe(design_weekly, n_trials, sr_dispersion),
         "full_bootstrap": stats.bootstrap_ci(eq.pct_change().dropna().to_numpy(), 365, n_boot=5000, mean_block=20.0),
     }
     registry = json.loads((RESULTS / "design_trials.json").read_text())
@@ -149,11 +157,16 @@ def main() -> None:
     report["inference"]["design_pbo_diagnostic"] = stats.probability_of_backtest_overfitting(variants, n_blocks=10)
 
     # ---- what drives the returns: regression on the two obvious benchmarks ---------
+    gold = static_mix(panel, {"GLD": 1.0}, START)
     factors = pd.DataFrame({"sp500": weekly(curves["S&P 500 buy & hold (EUR)"]),
-                            "bitcoin": weekly(curves["Bitcoin buy & hold"])})
+                            "bitcoin": weekly(curves["Bitcoin buy & hold"]), "gold": weekly(gold)})
+    two = factors[["sp500", "bitcoin"]]
     report["market_model"] = {
+        # three factors: is there anything left once the three asset classes are accounted for?
         "holdout": stats.market_model(weekly(eq.loc[SPLIT:]), factors),
         "since_2017": stats.market_model(weekly(eq.loc["2016-12-31":]), factors),
+        # two factors (no gold): the "alpha" here is largely the metals' own return
+        "holdout_without_gold": stats.market_model(weekly(eq.loc[SPLIT:]), two),
     }
 
     # ---- stress episodes -----------------------------------------------------------
@@ -196,9 +209,11 @@ def main() -> None:
           f"resamples with Sharpe <= 0: {b['share_resamples_sharpe_below_zero']:.1%}   "
           f"PSR (autocorrelation-adjusted) = {inf['holdout_psr_vs_zero']:.1%}")
     d = inf["design_deflated_sharpe"]
-    print(f"Design-sample Deflated Sharpe: {d['dsr']:.1%} after {d['n_trials']} attempts   "
+    print(f"Design-sample Deflated Sharpe: {d['dsr']:.1%} after {d['n_trials']} attempts treated as independent "
+          f"({inf['design_deflated_sharpe_observed_dispersion']['dsr']:.1%} with observed dispersion)   "
           f"PBO diagnostic = {inf['design_pbo_diagnostic']['pbo']:.1%}")
-    print("Market model (hold-out):", {k: round(v, 3) for k, v in report["market_model"]["holdout"].items()})
+    print("Market model, 3 factors (hold-out):", {k: round(v, 3) for k, v in report["market_model"]["holdout"].items()})
+    print("Market model, no gold (hold-out):", {k: round(v, 3) for k, v in report["market_model"]["holdout_without_gold"].items()})
     print("\nYearly, balanced:", {k: f"{v:+.1%}" for k, v in report["profiles"]["balanced"]["yearly"].items()})
 
 

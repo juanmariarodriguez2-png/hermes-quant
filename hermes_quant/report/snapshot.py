@@ -80,6 +80,15 @@ def model_snapshot(panel: Panel, features: Features, cfg: ModelConfig, t: int,
         risk.update(n_signal=info.get("n_signal"), noise_share=info.get("noise_share"),
                     lambda_max=info.get("lambda_max"), eigenvalues=info.get("eigenvalues"),
                     n_assets=len(names))
+        # which assets make up each real factor (largest loadings of its eigenvector)
+        vals, vecs = np.linalg.eigh(raw)
+        order = np.argsort(vals)[::-1]
+        factors = []
+        for k in order[: int(info.get("n_signal") or 0)]:
+            load = np.abs(vecs[:, k])
+            members = [names[i] for i in np.argsort(load)[::-1] if load[i] >= 0.6 * load.max()]
+            factors.append({"share": _round(vals[k] / len(names), 3), "assets": members})
+        risk["factors"] = factors
         correlation = {"names": names, "cleaned": np.round(clean, 3).tolist(), "raw": np.round(raw, 3).tolist()}
 
     elig = [s for s in close.columns if features.eligible[s].iloc[t]]

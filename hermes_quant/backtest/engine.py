@@ -18,40 +18,16 @@ Cash earns nothing, as on the exchange.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
 from ..data.panel import Panel
 from ..model import Features, ModelConfig, target_weights
+from ..portfolio.execution import CostModel, TradingRules, plan_orders, trading_costs
 
-
-@dataclass(frozen=True)
-class CostModel:
-    """Per-side trading frictions, as fractions of traded notional."""
-
-    fee: dict = field(default_factory=lambda: {"crypto": 0.0080, "equity": 0.0008, "real": 0.0008})
-    slippage: dict = field(default_factory=lambda: {"crypto": 0.0005, "equity": 0.0010, "real": 0.0010})
-    fx_fee: float = 0.0020                 # EUR <-> USD conversion for dollar-quoted assets
-    usd_classes: tuple = ("equity", "real")
-
-    def rate(self, cls: str) -> float:
-        return self.fee.get(cls, 0.0) + self.slippage.get(cls, 0.0)
-
-
-@dataclass(frozen=True)
-class TradingRules:
-    lag: int = 1                           # days between decision and execution
-    rebalance_every: int = 7               # days between target updates
-    band_abs: dict = field(default_factory=lambda: {"crypto": 0.02, "equity": 0.02, "real": 0.02})
-    band_rel: dict = field(default_factory=lambda: {"crypto": 0.25, "equity": 0.25, "real": 0.25})
-    min_ticket: float = 4.0                # euros; Kraken's minimum order is ~3.5-4 EUR
-    min_exit_ticket: float = 1.0           # full exits may be smaller
-    edge_fraction: float = 0.5             # after trading, stay this far inside the band (0 = at target)
-    stale_days: int = 5                    # price missing this long -> treat as delisted
-    delist_haircut: float = 0.0
-    allow_leverage: bool = False           # True for margin/perpetual books
+__all__ = ["BacktestResult", "CostModel", "TradingRules", "run_backtest", "static_mix"]
 
 
 @dataclass
@@ -84,9 +60,6 @@ def run_backtest(panel: Panel, features: Features, cfg: ModelConfig,
     can_trade = panel.tradable.to_numpy(dtype=bool)
     cls = [panel.classes[s] for s in symbols]
     rate = np.array([costs.rate(c) for c in cls])
-    is_usd = np.array([c in costs.usd_classes for c in cls])
-    band_abs = np.array([rules.band_abs.get(c, 0.02) for c in cls])
-    band_rel = np.array([rules.band_rel.get(c, 0.20) for c in cls])
     carry_rate = None
     if carry is not None:
         carry_rate = carry.reindex(index=index, columns=symbols).fillna(0.0).to_numpy(dtype=float)
@@ -117,10 +90,11 @@ def run_backtest(panel: Panel, features: Features, cfg: ModelConfig,
         # price history has stopped while we hold the asset -> forced liquidation
         gone = (missing >= rules.stale_days) & (units != 0) & np.isfinite(last_price)
         for i in np.flatnonzero(gone):
-            proceeds = units[i] * last_price[i] * (1.0 - rules.delist_haircut)
-            fee = abs(proceeds) * rate[i]
+            quoted = units[i] * last_price[i]
+            proceeds = quoted * (1.0 - rules.delist_haircut)
+            fee = abs(proceeds) * (rate[i] + (costs.fx_fee if cls[i] in costs.usd_classes else 0.0))
             cash += proceeds - fee
-            cost_paid[t] += fee
+            cost_paid[t] += fee + (quoted - proceeds)        # the write-down is a cost too
             trade_log.append((index[t], symbols[i], -units[i], last_price[i], -proceeds, fee, "delisted"))
             units[i] = 0.0
 
@@ -142,33 +116,9 @@ def run_backtest(panel: Panel, features: Features, cfg: ModelConfig,
         targets_hist[t] = target
 
         # orders: only where the deviation is worth the commission
-        current_w = position_value / nav if nav > 0 else np.zeros(n)
-        delta_w = target - current_w
-        threshold = np.maximum(band_abs, band_rel * np.abs(target))
-        exiting = (target == 0) & (units != 0)
-        wants = (np.abs(delta_w) > threshold) | exiting
-        # with proportional costs it is optimal to trade only part of the way back
-        partial = delta_w - np.sign(delta_w) * rules.edge_fraction * threshold
-        desired = np.where(exiting, delta_w, partial)
-        order = np.where(wants & can_trade[t] & valid, desired * nav, 0.0)
-        floor = np.where(exiting, rules.min_exit_ticket, rules.min_ticket)
-        order[np.abs(order) < floor] = 0.0
-
+        order = plan_orders(target, position_value, cash, can_trade[t] & valid, cls, costs, rules)
         if np.any(order != 0):
-            if not rules.allow_leverage:
-                sells = np.minimum(order, 0.0)
-                buys = np.maximum(order, 0.0)
-                fx_reserve = abs(float((order * is_usd).sum())) * costs.fx_fee
-                budget = cash - float(sells.sum()) - float((-sells * rate).sum()) - fx_reserve
-                buy_total = float((buys * (1.0 + rate)).sum())
-                if budget <= 0:
-                    buys[:] = 0.0
-                elif buy_total > budget:
-                    buys *= budget / buy_total               # never spend cash we lack
-                order = sells + buys
-                order[np.abs(order) < floor] = 0.0
-            fees = np.abs(order) * rate
-            fx_cost = abs(float((order * is_usd).sum())) * costs.fx_fee
+            fees, fx_cost = trading_costs(order, cls, costs)
             for i in np.flatnonzero(order):
                 units[i] += order[i] / px[i]
                 if abs(units[i] * px[i]) < 0.01:
@@ -198,8 +148,14 @@ def run_backtest(panel: Panel, features: Features, cfg: ModelConfig,
 
 def static_mix(panel: Panel, weights: dict[str, float], start: str, end: str | None = None,
                rebalance_days: int | None = None) -> pd.Series:
-    """Frictionless static-mix benchmark (weights sum to <= 1; the rest sits in cash)."""
+    """Frictionless static-mix benchmark (weights sum to <= 1; the rest sits in cash).
+
+    Every asset must already be trading on the first day: a benchmark may not own
+    something before it exists."""
     close = panel.close.loc[start:end, list(weights)].ffill()
+    if close.iloc[0].isna().any():
+        missing = list(close.columns[close.iloc[0].isna()])
+        raise ValueError(f"static_mix: no price on {close.index[0].date()} for {missing}")
     r = close.pct_change().fillna(0.0).to_numpy()
     w0 = np.array(list(weights.values()), dtype=float)
     w = w0.copy()

@@ -86,7 +86,10 @@ def fit(x: np.ndarray, n_states: int = 2, init: HMMParams | None = None, max_ite
     x = np.asarray(x, dtype=float)
     x = x[np.isfinite(x)]
     p = init if init is not None else initial_guess(x, n_states)
-    floor = var_floor if var_floor is not None else 1e-4 * float(np.var(x))
+    spread = float(np.var(x))
+    if len(x) < 10 or not np.isfinite(spread) or spread <= 0:
+        raise ValueError("HMM needs a non-constant series with at least 10 observations")
+    floor = var_floor if var_floor is not None else max(1e-4 * spread, 1e-14)
     start, trans, mean, var = p.start.copy(), p.trans.copy(), p.mean.copy(), p.var.copy()
     prev = -np.inf
     loglik = prev
@@ -112,20 +115,26 @@ def fit(x: np.ndarray, n_states: int = 2, init: HMMParams | None = None, max_ite
 
 
 def filtered_probabilities(x: np.ndarray, params: HMMParams) -> np.ndarray:
-    """P(state_t = k | x_1..x_t). NaN observations carry the prediction forward."""
+    """P(state_t = k | x_1..x_t).
+
+    The chain advances once per *observation*, exactly as during fitting (where
+    missing days are dropped). On a day without an observation (a weekend for an
+    exchange-traded fund) the last belief is simply carried forward: applying the
+    transition matrix there would let three steps pass between Friday and Monday
+    although the model was estimated with one."""
     x = np.asarray(x, dtype=float)
     k = params.n_states
     out = np.full((len(x), k), np.nan)
     belief = params.start.copy()
-    first = True
+    seen = False
     for t, xt in enumerate(x):
-        if not first:
-            belief = belief @ params.trans
         if xt == xt:
+            if seen:
+                belief = belief @ params.trans
             lik = _emission(np.array([xt]), params.mean, params.var)[0]
             belief = belief * lik
             belief /= belief.sum()
-        first = False
+            seen = True
         out[t] = belief
     return out
 
@@ -147,13 +156,15 @@ def walk_forward_turbulent_prob(x: np.ndarray, min_obs: int = 500, refit_every: 
         lo = 0 if max_window is None else max(0, tau - max_window)
         train = x[lo:tau]
         train = train[np.isfinite(train)]
-        if len(train) >= min_obs // 2:
+        if len(train) >= min_obs // 2 and np.var(train) > 0:
             cold = fit(train, n_states)
             if params is not None:
                 warm = fit(train, n_states, init=params)
                 params = warm if warm.loglik >= cold.loglik else cold
             else:
                 params = cold
+            if not (np.isfinite(params.mean).all() and np.isfinite(params.var).all()):
+                params = None                        # numerical failure: report NaN, not a guess
         end = min(tau + refit_every, n)
         if params is not None:
             probs = filtered_probabilities(x[lo:end], params)

@@ -39,13 +39,31 @@ def sharpe_std_error(sr: float, n: int, skew: float, kurt: float) -> float:
     return float(np.sqrt(max(1.0 - skew * sr + 0.25 * (kurt - 1.0) * sr * sr, 1e-12) / (n - 1)))
 
 
-def probabilistic_sharpe(r: np.ndarray, benchmark_sr: float = 0.0) -> float:
-    """P(true Sharpe > benchmark_sr), both per period."""
+def autocorrelation_inflation(r: np.ndarray, lags: int = 4) -> float:
+    """Factor by which serial correlation widens the Sharpe standard error (Lo 2002,
+    Newey-West weights). 1.0 for independent returns; never below 1 here, so the
+    adjustment can only make a result look *less* significant."""
+    r = np.asarray(r, dtype=float)
+    x = r - r.mean()
+    denom = float(x @ x)
+    if denom <= 0:
+        return 1.0
+    total = 1.0
+    for k in range(1, min(lags, len(r) - 2) + 1):
+        rho = float(x[k:] @ x[:-k]) / denom
+        total += 2.0 * (1.0 - k / (lags + 1.0)) * rho
+    return float(np.sqrt(max(total, 1.0)))
+
+
+def probabilistic_sharpe(r: np.ndarray, benchmark_sr: float = 0.0, autocorr_lags: int = 4) -> float:
+    """P(true Sharpe > benchmark_sr), both per period, allowing for fat tails, skew
+    and (conservatively) serial correlation."""
     r = np.asarray(r, dtype=float)
     sr = sharpe(r)
     skew = float(pd.Series(r).skew())
     kurt = float(pd.Series(r).kurt()) + 3.0
-    return float(norm.cdf((sr - benchmark_sr) / sharpe_std_error(sr, len(r), skew, kurt)))
+    se = sharpe_std_error(sr, len(r), skew, kurt) * autocorrelation_inflation(r, autocorr_lags)
+    return float(norm.cdf((sr - benchmark_sr) / se))
 
 
 def expected_max_sharpe(n_trials: int, trials_sr_std: float) -> float:
@@ -90,7 +108,7 @@ def bootstrap_ci(r: np.ndarray, periods: int, n_boot: int = 2000, mean_block: fl
     for b in range(n_boot):
         x = r[stationary_bootstrap_indices(n, mean_block, rng)]
         sr[b] = sharpe(x) * np.sqrt(periods)
-        curve = np.cumprod(1.0 + x)
+        curve = np.concatenate([[1.0], np.cumprod(1.0 + x)])   # include the starting capital
         cagr[b] = curve[-1] ** (periods / n) - 1.0
         mdd[b] = float((curve / np.maximum.accumulate(curve) - 1.0).min())
 
@@ -98,9 +116,12 @@ def bootstrap_ci(r: np.ndarray, periods: int, n_boot: int = 2000, mean_block: fl
         lo, med, hi = np.quantile(a, [0.025, 0.5, 0.975])
         return {"p2.5": float(lo), "p50": float(med), "p97.5": float(hi)}
 
+    # These are frequencies across resamples of the observed history, not literal
+    # probabilities about the true parameter.
     return {"sharpe": band(sr), "cagr": band(cagr), "max_drawdown": band(mdd),
-            "prob_sharpe_below_zero": float(np.mean(sr <= 0.0)),
-            "prob_negative_cagr": float(np.mean(cagr <= 0.0))}
+            "share_resamples_sharpe_below_zero": float(np.mean(sr <= 0.0)),
+            "share_resamples_negative_cagr": float(np.mean(cagr <= 0.0)),
+            "mean_block": mean_block, "n_boot": n_boot}
 
 
 # ----------------------------------------------------------------- regressions
@@ -169,6 +190,9 @@ def probability_of_backtest_overfitting(returns: pd.DataFrame, n_blocks: int = 1
         oos_of_best.append(oos_sr[best])
         is_of_best.append(is_sr[best])
     logits = np.array(logits)
+    # Note: this ranks by plain Sharpe. It is a diagnostic of how fragile "pick the
+    # best-looking variant" would be on this candidate set, not a replay of any
+    # more elaborate selection rule.
     return {"pbo": float(np.mean(logits <= 0.0)), "n_splits": len(logits), "n_variants": n,
             "median_oos_rank": float(1.0 / (1.0 + np.exp(-np.median(logits)))),
             "mean_is_sharpe_of_best": float(np.mean(is_of_best)),

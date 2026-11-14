@@ -1,0 +1,62 @@
+{
+  "name": "D funds always held, crypto trend-only | regime on equities",
+  "config": {
+    "strategic_floor": {
+      "equity": 1.0,
+      "real": 1.0,
+      "crypto": 0.0
+    },
+    "regime": true,
+    "regime_proxy": {
+      "equity": "SPY"
+    }
+  },
+  "mechanical_rule_pick": "A static risk parity (no trend) | regime on equities",
+  "mechanical_rule_config": {
+    "strategic_floor": {
+      "equity": 1.0,
+      "real": 1.0,
+      "crypto": 1.0
+    },
+    "regime": true,
+    "regime_proxy": {
+      "equity": "SPY"
+    }
+  },
+  "within_0.05_sharpe_of_best": [
+    "A static risk parity (no trend) | regime off",
+    "A static risk parity (no trend) | regime on equities",
+    "C half core + half trend, crypto trend-only | regime off",
+    "C half core + half trend, crypto trend-only | regime on equities",
+    "D funds always held, crypto trend-only | regime off",
+    "D funds always held, crypto trend-only | regime on equities"
+  ],
+  "chosen_metrics": {
+    "name": "design: D funds always held, crypto trend-only | regime on equities",
+    "cagr": 0.11487874956481181,
+    "vol": 0.12275907062362174,
+    "sharpe": 0.9474325506911824,
+    "max_drawdown": -0.17248275046591777,
+    "gross": 0.7710741362723171,
+    "turnover_per_year": 1.3043282505411047,
+    "cost_per_year_pct": 0.005929642838490979,
+    "trades": 529,
+    "start": "2007-01-01",
+    "end": "2021-12-31",
+    "capital": 236.0
+  },
+  "rule_pick_metrics": {
+    "name": "design: A static risk parity (no trend) | regime on equities",
+    "cagr": 0.12348793388923696,
+    "vol": 0.1265266297233677,
+    "sharpe": 0.9837719009520187,
+    "max_drawdown": -0.19283277792077858,
+    "gross": 0.7746277304653509,
+    "turnover_per_year": 1.281185029595381,
+    "cost_per_year_pct": 0.005934944441444319,
+    "trades": 542,
+    "start": "2007-01-01",
+    "end": "2021-12-31",
+    "capital": 236.0
+  }
+}

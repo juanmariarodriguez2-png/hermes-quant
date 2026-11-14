@@ -171,3 +171,14 @@ def test_effective_sample_size_of_ew_weights():
     assert abs(n_eff - 500) < 1.0
     _, n_eff_fast = rmt.ew_correlation(x, halflife=20.0)
     assert n_eff_fast < 120
+
+
+def test_session_returns_keep_what_happened_while_the_market_was_shut():
+    """An FX move on a holiday must show up in the next session's return."""
+    idx = pd.date_range("2024-01-01", periods=6, freq="D")
+    close = pd.DataFrame({"a": [100.0, 101.0, 105.0, 105.0, 104.0, 106.0]}, index=idx)
+    open_days = pd.DataFrame({"a": [True, True, False, False, True, True]}, index=idx)
+    r, span = kalman.session_returns(close, open_days)
+    assert np.isnan(r["a"].iloc[2]) and np.isnan(r["a"].iloc[3])
+    assert r["a"].iloc[4] == np.log(104.0 / 101.0)          # from the previous *session*, not yesterday
+    assert span["a"].iloc[4] == 3 and span["a"].iloc[5] == 1

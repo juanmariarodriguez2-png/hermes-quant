@@ -104,3 +104,24 @@ def test_absorption_ratio_rises_when_assets_move_together():
     common = rng.normal(size=(800, 1))
     coupled = pd.DataFrame(common * 2.0 + rng.normal(size=(800, 10)), index=idx)
     assert fragility.absorption_ratio(coupled).iloc[-1] > fragility.absorption_ratio(independent).iloc[-1] + 0.3
+
+
+def test_filter_advances_once_per_observation_not_per_calendar_day():
+    """Friday -> Monday is one step of the chain, however many days lie between."""
+    x, _ = _two_state_series(600, seed=7)
+    p = hmm.fit(x, 2)
+    dense = hmm.filtered_probabilities(x, p)
+    gappy = np.full(3 * len(x), np.nan)
+    gappy[::3] = x                                          # same observations, two empty days between
+    sparse = hmm.filtered_probabilities(gappy, p)
+    assert np.allclose(sparse[::3], dense)
+    assert np.allclose(sparse[1::3], dense)                 # carried forward unchanged
+
+
+def test_hmm_rejects_a_constant_series():
+    import pytest
+
+    with pytest.raises(ValueError):
+        hmm.fit(np.zeros(500), 2)
+    out = hmm.walk_forward_turbulent_prob(np.zeros(900), min_obs=300, refit_every=100)
+    assert np.isnan(out).all()                              # unavailable, not silently "calm"

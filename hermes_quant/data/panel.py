@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ..universe import CRYPTO_EXCLUDE, ETF_RESEARCH, asset_class
+from ..universe import CRYPTO_EXCLUDE, ETF_EXTENDED, ETF_RESEARCH, asset_class
 
 FIELDS = ("open", "high", "low", "close")
 
@@ -35,6 +35,7 @@ class Panel:
     eurusd: pd.Series              # USD per EUR
     classes: dict[str, str]
     funding: pd.DataFrame          # daily perp funding rate paid by longs (crypto, 2020+)
+    investable: pd.DataFrame | None = None   # optional venue gate (live): False = do not hold
 
     @property
     def symbols(self) -> list[str]:
@@ -65,9 +66,31 @@ def _wide(frames: dict[str, pd.DataFrame], field: str, index: pd.DatetimeIndex) 
     return pd.DataFrame({s: f[field] for s, f in frames.items()}).reindex(index)
 
 
-def build_panel(research_dir: str | Path, start: str = "2015-07-20", end: str | None = None) -> Panel:
+def _ever_liquid(crypto: dict[str, pd.DataFrame], index: pd.DatetimeIndex, keep_top: int,
+                 min_history: int, window: int) -> list[str]:
+    """Coins that ranked in the top ``keep_top`` by trailing traded volume on at least
+    one day, judged day by day with the information available that day. Everything
+    else can never be selected by the model, so dropping it only saves time."""
+    volume = pd.DataFrame({s: f["quote_volume"] for s, f in crypto.items()}).reindex(index)
+    close = pd.DataFrame({s: f["close"] for s, f in crypto.items()}).reindex(index)
+    seasoned = (close.notna().cumsum() >= min_history) & close.notna()
+    liquidity = volume.rolling(window, min_periods=window // 2).median().where(seasoned)
+    rank = liquidity.rank(axis=1, ascending=False, method="first")
+    return list(rank.columns[(rank <= keep_top).any()])
+
+
+def build_panel(research_dir: str | Path, start: str = "2015-07-20", end: str | None = None,
+                crypto_keep_top: int = 12, min_history: int = 400, liquidity_window: int = 90,
+                extended_funds: bool = False) -> Panel:
+    """Assemble the research panel.
+
+    Crypto comes from Binance's complete USDT listing history when that file is
+    present (``binance_klines_full.parquet``: every market ever listed, including the
+    delisted ones), otherwise from the smaller hand-picked download.
+    """
     research_dir = Path(research_dir)
-    binance = pd.read_parquet(research_dir / "binance_klines.parquet")
+    full = research_dir / "binance_klines_full.parquet"
+    binance = pd.read_parquet(full if full.exists() else research_dir / "binance_klines.parquet")
     coinbase = pd.read_parquet(research_dir / "coinbase_klines.parquet")
     yahoo = pd.read_parquet(research_dir / "yahoo_daily.parquet")
     funding_path = research_dir / "binance_funding.parquet"
@@ -87,11 +110,14 @@ def build_panel(research_dir: str | Path, start: str = "2015-07-20", end: str | 
 
     last_day = max(f.index[-1] for f in crypto.values())
     index = pd.date_range(start, end or last_day, freq="D")
+    keep = set(_ever_liquid(crypto, index, crypto_keep_top, min_history, liquidity_window))
+    crypto = {s: f for s, f in crypto.items() if s in keep}
 
     # ---- funds (USD) --------------------------------------------------------
     funds: dict[str, pd.DataFrame] = {}
     session: dict[str, pd.Series] = {}
-    for symbol in ETF_RESEARCH:
+    fund_list = list(ETF_RESEARCH) + (list(ETF_EXTENDED) if extended_funds else [])
+    for symbol in fund_list:
         df = yahoo[yahoo["symbol"] == symbol].drop(columns="symbol").sort_index()
         df = df[(df["close"] > 0) & df["close"].notna()]
         session[symbol] = pd.Series(True, index=df.index).reindex(index, fill_value=False)

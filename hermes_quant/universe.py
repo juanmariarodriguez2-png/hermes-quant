@@ -14,9 +14,9 @@ from dataclasses import dataclass
 
 # --------------------------------------------------------------------------- research
 
-# Every coin that sat in the top ~20 by market value at some point in 2017-2026,
-# winners and losers alike (EOS, NEO, IOTA, XEM, LUNA, FTT, ICP ... are the point).
-# Selection *within* this list is done point-in-time by trailing traded volume.
+# Quick-start list only. The research results use Binance's COMPLETE listing history
+# (research/01_download_data.py crypto_full), because any hand-written list is
+# compiled with hindsight. This shorter one is kept for fast experiments.
 CRYPTO_CANDIDATES = [
     "BTC", "ETH", "XRP", "LTC", "ADA", "XLM", "EOS", "NEO", "IOTA", "DASH", "XMR",
     "TRX", "ETC", "XEM", "VET", "BNB", "LINK", "XTZ", "ATOM", "DOT", "UNI", "SOL",
@@ -28,16 +28,25 @@ CRYPTO_CANDIDATES = [
 # Stablecoins, wrapped and leveraged tokens are never tradable "assets".
 CRYPTO_EXCLUDE = {"USDC", "BUSD", "TUSD", "DAI", "FDUSD", "USDP", "PAX", "EUR", "WBTC", "UST"}
 
-# US-listed ETFs that also exist as Kraken xStocks. Broad asset-class funds only:
-# picking today's popular single stocks would be hindsight in disguise.
+# Funds the strategy may hold. Two filters, both about tradability, neither about
+# past performance:
+#   1. broad asset-class funds only (picking today's popular single stocks would be
+#      hindsight in disguise);
+#   2. the tokenized version must actually trade on Kraken. A scan of all 177 xStocks
+#      (Nov 2026) found real two-way volume in only four broad funds; the Europe,
+#      small-cap, emerging-market and energy tokens go days without a single trade.
 ETF_RESEARCH = {
     "SPY": "US large caps (S&P 500)",
     "QQQ": "US growth / Nasdaq 100",
+    "GLD": "Gold",
+    "SLV": "Silver",
+}
+# Listed on Kraken but too illiquid today. Used only for a sensitivity run ("what if
+# these were tradable"); the live engine admits them automatically once they trade.
+ETF_EXTENDED = {
     "IWM": "US small caps (Russell 2000)",
     "VGK": "European equities",
     "IEMG": "Emerging-market equities",
-    "GLD": "Gold",
-    "SLV": "Silver",
     "XLE": "Energy equities",
 }
 
@@ -96,3 +105,9 @@ LIVE_INSTRUMENTS: list[Instrument] = [
 ]
 
 LIVE_BY_SYMBOL = {i.symbol: i for i in LIVE_INSTRUMENTS}
+
+# Single stocks with deep tokenized markets on Kraken. The model scores them every day
+# (the "radar" on the dashboard) but does not trade them: there is no survivorship-free
+# history to validate a stock-picking rule on, and an unvalidated rule is a guess.
+STOCK_RADAR = ["NVDA", "TSLA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "AMD", "INTC", "AVGO", "NFLX",
+               "ORCL", "PLTR", "MSTR", "COIN", "HOOD", "TSM", "ASML", "MU", "MRVL"]

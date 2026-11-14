@@ -18,24 +18,23 @@ import json
 import numpy as np
 import pandas as pd
 
-from common import RESULTS, TRIALS, ModelConfig, evaluate, load_panel, load_regime, summary
+from common import RESULTS, ModelConfig, evaluate, load_panel, load_regime, summary
 from hermes_quant.backtest import stats
 from hermes_quant.backtest.engine import static_mix
 from hermes_quant.backtest.metrics import drawdown, yearly_returns
+from hermes_quant.model import PROFILES
 
 START = "2007-01-01"
 SPLIT = "2021-12-31"            # last day of the design sample
 
-PROFILES = {
-    "balanced": ModelConfig(),
-    "growth": ModelConfig(target_vol=0.20, risk_share={"equity": 0.30, "real": 0.20, "crypto": 0.50},
-                          max_weight={"crypto": 0.25, "equity": 0.35, "real": 0.30},
-                          class_cap={"crypto": 0.50, "equity": 1.00, "real": 0.50}),
-}
 CONTEXT = {  # shown for comparison only; nothing is selected from these
-    "static risk parity (no trend)": ModelConfig(strategic_floor={"equity": 1.0, "real": 1.0, "crypto": 1.0}),
-    "pure trend (no core)": ModelConfig(strategic_floor={"equity": 0.0, "real": 0.0, "crypto": 0.0}),
+    "what the mechanical rule picked (crypto always held)":
+        ModelConfig(strategic_floor={"equity": 1.0, "real": 1.0, "crypto": 1.0}),
+    "trend filter on everything":
+        ModelConfig(strategic_floor={"equity": 0.0, "real": 0.0, "crypto": 0.0}),
+    "no regime overlay": ModelConfig(regime=False),
 }
+WIDER = "same model, if the four illiquid funds could be traded"
 BENCHMARKS = {
     "Bitcoin buy & hold": {"BTC": 1.0},
     "S&P 500 buy & hold (EUR)": {"SPY": 1.0},
@@ -54,8 +53,9 @@ STRESS = {
 def window_stats(equity: pd.Series, lo: str | None, hi: str | None) -> dict:
     part = equity.loc[lo:hi]
     s = summary(part)
-    return {k: s[k] for k in ("start", "end", "years", "total_return", "cagr", "vol", "sharpe", "sortino",
-                              "max_drawdown", "calmar", "worst_month", "best_month", "positive_months")}
+    return {k: s[k] for k in ("start", "end", "years", "total_return", "cagr", "vol", "sharpe",
+                              "sharpe_excess", "sortino", "max_drawdown", "calmar", "worst_month",
+                              "best_month", "positive_months")}
 
 
 def weekly(equity: pd.Series) -> pd.Series:
@@ -63,16 +63,26 @@ def weekly(equity: pd.Series) -> pd.Series:
 
 
 def trial_stats() -> tuple[int, float]:
-    """Number of distinct variants ever examined, and the dispersion of their Sharpes."""
-    seen = {}
-    for line in TRIALS.read_text().splitlines():
-        row = json.loads(line)
-        seen[row["name"]] = row["sharpe"]
-    sr_weekly = np.array(list(seen.values())) / np.sqrt(52.0)
-    return len(seen), float(sr_weekly.std(ddof=1))
+    """Attempts made while designing the model and the dispersion of their weekly
+    Sharpe ratios. Read from the registry frozen by 04_design_sample.py, which was
+    built on design data only: nothing from the hold-out can leak into the hurdle."""
+    registry = json.loads((RESULTS / "design_trials.json").read_text())
+    sharpes = np.array(list(registry["weekly_sharpe"].values()))
+    return int(registry["n_trials"]), float(sharpes.std(ddof=1))
+
+
+def check_frozen() -> None:
+    """The model that sits the exam must be exactly the one the design rule chose."""
+    chosen = json.loads((RESULTS / "selected.json").read_text())["config"]
+    default = ModelConfig()
+    for key, value in chosen.items():
+        if getattr(default, key) != value:
+            raise SystemExit(f"model default {key}={getattr(default, key)!r} differs from the selected "
+                             f"configuration {value!r}; freeze the model before running the hold-out")
 
 
 def main() -> None:
+    check_frozen()
     panel = load_panel()
     regime = load_regime(panel, ModelConfig())
     last = str(panel.close.index[-1].date())
@@ -81,7 +91,7 @@ def main() -> None:
     results = {}
 
     for name, cfg in {**PROFILES, **CONTEXT}.items():
-        res, row = evaluate(f"final: {name}", panel, cfg, regime, start=START, log=name in PROFILES)
+        res, row = evaluate(f"final: {name}", panel, cfg, regime, start=START, log=False)
         results[name] = res
         curves[name] = res.equity / res.equity.iloc[0]
         entry = {"design": window_stats(res.equity, START, SPLIT),
@@ -92,6 +102,19 @@ def main() -> None:
                  "turnover_per_year": row["turnover_per_year"], "cost_per_year_pct": row["cost_per_year_pct"],
                  "avg_gross": row["gross"]}
         (report["profiles"] if name in PROFILES else report["context"])[name] = entry
+
+    # Context: the wider fund list (Europe, small caps, emerging markets, energy). Those
+    # tokens exist on Kraken but do not trade, so this is NOT an investable result.
+    wide_panel = load_panel(extended_funds=True)
+    wide_res, wide_row = evaluate(f"final: {WIDER}", wide_panel, ModelConfig(),
+                                  load_regime(wide_panel, ModelConfig()), start=START, log=False)
+    curves[WIDER] = wide_res.equity / wide_res.equity.iloc[0]
+    report["context"][WIDER] = {
+        "design": window_stats(wide_res.equity, START, SPLIT), "holdout": window_stats(wide_res.equity, SPLIT, None),
+        "full": window_stats(wide_res.equity, START, None), "since_2017": window_stats(wide_res.equity, "2016-12-31", None),
+        "yearly": {int(k): float(v) for k, v in yearly_returns(wide_res.equity).items()},
+        "turnover_per_year": wide_row["turnover_per_year"], "cost_per_year_pct": wide_row["cost_per_year_pct"],
+        "avg_gross": wide_row["gross"]}
 
     for name, weights in BENCHMARKS.items():
         first = max(pd.Timestamp(START), panel.close[list(weights)].dropna().index[0])
@@ -110,13 +133,20 @@ def main() -> None:
     design_weekly = weekly(eq.loc[START:SPLIT]).to_numpy()
     n_trials, sr_dispersion = trial_stats()
     report["inference"] = {
+        # primary: block bootstrap, which respects volatility clustering and serial dependence
         "holdout_bootstrap": stats.bootstrap_ci(hold_daily, 365, n_boot=5000, mean_block=20.0),
+        "holdout_bootstrap_block_sensitivity": {
+            str(int(block)): stats.bootstrap_ci(hold_daily, 365, n_boot=2000, mean_block=block)["sharpe"]
+            for block in (5.0, 10.0, 40.0, 80.0)},
+        # secondary: closed-form, with a conservative autocorrelation correction
         "holdout_psr_vs_zero": stats.probabilistic_sharpe(hold_weekly, 0.0),
         "design_deflated_sharpe": stats.deflated_sharpe(design_weekly, n_trials, sr_dispersion),
         "full_bootstrap": stats.bootstrap_ci(eq.pct_change().dropna().to_numpy(), 365, n_boot=5000, mean_block=20.0),
     }
-    variants = pd.read_parquet(RESULTS / "design_variant_returns.parquet")
-    report["inference"]["design_pbo"] = stats.probability_of_backtest_overfitting(variants, n_blocks=10)
+    registry = json.loads((RESULTS / "design_trials.json").read_text())
+    variants = pd.read_parquet(RESULTS / "design_variant_returns.parquet")[registry["model_variants"]]
+    # Diagnostic only: how fragile would "pick the best Sharpe" be on these candidates?
+    report["inference"]["design_pbo_diagnostic"] = stats.probability_of_backtest_overfitting(variants, n_blocks=10)
 
     # ---- what drives the returns: regression on the two obvious benchmarks ---------
     factors = pd.DataFrame({"sp500": weekly(curves["S&P 500 buy & hold (EUR)"]),
@@ -148,13 +178,13 @@ def main() -> None:
 
     # ---- console summary -----------------------------------------------------------
     def line(name, s):
-        return (f"{name:34s} CAGR {s['cagr']:7.2%}  vol {s['vol']:6.2%}  Sharpe {s['sharpe']:5.2f}  "
-                f"maxDD {s['max_drawdown']:7.2%}  total {s['total_return']:8.1%}")
+        return (f"{name[:52]:52s} CAGR {s['cagr']:7.2%}  vol {s['vol']:6.2%}  Sharpe {s['sharpe']:5.2f} "
+                f"(excess {s['sharpe_excess']:5.2f})  maxDD {s['max_drawdown']:7.2%}  total {s['total_return']:8.1%}")
 
     for label, key in (("DESIGN SAMPLE (2007-2021)", "design"), (f"HOLD-OUT ({SPLIT} -> {last})", "holdout"),
                        ("FULL HISTORY", "full")):
         print(f"\n{label}")
-        for name in (*PROFILES, *CONTEXT):
+        for name in (*PROFILES, *CONTEXT, WIDER):
             group = report["profiles"] if name in PROFILES else report["context"]
             print("  " + line(name, group[name][key]))
         if key != "design":
@@ -162,11 +192,12 @@ def main() -> None:
                 print("  " + line(name, report["benchmarks"][name][key]))
     inf = report["inference"]
     b = inf["holdout_bootstrap"]
-    print(f"\nHold-out Sharpe 95% interval: [{b['sharpe']['p2.5']:.2f}, {b['sharpe']['p97.5']:.2f}]   "
-          f"P(Sharpe<=0) = {b['prob_sharpe_below_zero']:.1%}   PSR = {inf['holdout_psr_vs_zero']:.1%}")
+    print(f"\nHold-out Sharpe, 95% bootstrap interval: [{b['sharpe']['p2.5']:.2f}, {b['sharpe']['p97.5']:.2f}]   "
+          f"resamples with Sharpe <= 0: {b['share_resamples_sharpe_below_zero']:.1%}   "
+          f"PSR (autocorrelation-adjusted) = {inf['holdout_psr_vs_zero']:.1%}")
     d = inf["design_deflated_sharpe"]
-    print(f"Design-sample Deflated Sharpe: {d['dsr']:.1%} after {d['n_trials']} trials   "
-          f"PBO = {inf['design_pbo']['pbo']:.1%}")
+    print(f"Design-sample Deflated Sharpe: {d['dsr']:.1%} after {d['n_trials']} attempts   "
+          f"PBO diagnostic = {inf['design_pbo_diagnostic']['pbo']:.1%}")
     print("Market model (hold-out):", {k: round(v, 3) for k, v in report["market_model"]["holdout"].items()})
     print("\nYearly, balanced:", {k: f"{v:+.1%}" for k, v in report["profiles"]["balanced"]["yearly"].items()})
 

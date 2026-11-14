@@ -32,6 +32,7 @@ def turbulence(returns: pd.DataFrame, window: int = 365, min_obs: int = 180,
         mu = hist.mean(axis=0)
         cov = np.cov(hist, rowvar=False)
         cov = (1.0 - ridge) * cov + ridge * np.diag(np.diag(cov))  # shrink for stability
+        cov += np.eye(n) * max(1e-12, 1e-8 * float(np.trace(cov)) / n)   # a flat column stays invertible
         d = today[ok] - mu
         out[t] = float(d @ np.linalg.solve(cov, d)) / n
     return pd.Series(out, index=returns.index, name="turbulence")

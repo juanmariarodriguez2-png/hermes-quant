@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
 PERIODS = 365  # calendar-day equity curves
+_ECB = Path(__file__).resolve().parents[1] / "data" / "ecb_deposit_rate.csv"
+
+
+def euro_cash_rate(index: pd.DatetimeIndex) -> pd.Series:
+    """Daily euro risk-free return: the ECB deposit facility rate (a step function,
+    public ECB data bundled with the package), accrued over 365 days."""
+    steps = pd.read_csv(_ECB, index_col="effective_from", parse_dates=True)["rate_pct"]
+    annual = steps.reindex(steps.index.union(index)).ffill().reindex(index).bfill() / 100.0
+    return annual / 365.0
 
 
 def drawdown(equity: pd.Series) -> pd.Series:
@@ -13,8 +24,12 @@ def drawdown(equity: pd.Series) -> pd.Series:
 
 
 def summary(equity: pd.Series, periods: int = PERIODS) -> dict:
-    """Headline statistics. Sharpe uses a zero risk-free rate: idle cash on the
-    exchange earns nothing, so that is the investor's true opportunity cost here."""
+    """Headline statistics.
+
+    Two Sharpe ratios are reported. ``sharpe`` measures returns against idle cash on
+    the exchange, which earns nothing. ``sharpe_excess`` subtracts the euro
+    risk-free rate (ECB deposit facility), the textbook definition: it is lower
+    when rates are positive and higher when they were negative (2014-2022)."""
     equity = equity.dropna()
     r = equity.pct_change().dropna()
     if len(r) < 2:
@@ -24,6 +39,8 @@ def summary(equity: pd.Series, periods: int = PERIODS) -> dict:
     cagr = total ** (1.0 / years) - 1.0
     vol = r.std(ddof=1) * np.sqrt(periods)
     sharpe = r.mean() / r.std(ddof=1) * np.sqrt(periods) if r.std(ddof=1) > 0 else np.nan
+    excess = r - euro_cash_rate(r.index) if periods == PERIODS else r
+    sharpe_excess = excess.mean() / excess.std(ddof=1) * np.sqrt(periods) if excess.std(ddof=1) > 0 else np.nan
     downside = np.sqrt(np.mean(np.minimum(r, 0.0) ** 2)) * np.sqrt(periods)
     dd = drawdown(equity)
     max_dd = float(dd.min())
@@ -38,7 +55,8 @@ def summary(equity: pd.Series, periods: int = PERIODS) -> dict:
         "total_return": float(total - 1.0),
         "cagr": float(cagr),
         "vol": float(vol),
-        "sharpe": float(sharpe),
+        "sharpe": float(sharpe),                    # versus idle exchange cash (0%)
+        "sharpe_excess": float(sharpe_excess),      # versus the euro risk-free rate
         "sortino": float(r.mean() * periods / downside) if downside > 0 else np.nan,
         "max_drawdown": max_dd,
         "calmar": float(cagr / abs(max_dd)) if max_dd < 0 else np.nan,

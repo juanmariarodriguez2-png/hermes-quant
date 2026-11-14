@@ -184,3 +184,53 @@ def test_pbo_is_high_for_noise_and_low_for_a_real_edge():
     skilled = noise.copy()
     skilled[0] += 0.002                 # one variant with a genuine, persistent edge
     assert stats.probability_of_backtest_overfitting(skilled, 8)["pbo"] < 0.1
+
+
+# ------------------------------------------------------------------ regressions from the code review
+
+def test_order_plan_never_overdraws_cash_even_with_fx_fees():
+    """A dollar-to-dollar rotation must stay affordable after buys are scaled."""
+    from hermes_quant.portfolio.execution import plan_orders, trading_costs
+
+    rng = np.random.default_rng(11)
+    costs, rules = CostModel(), TradingRules(edge_fraction=0.0)
+    classes = ["equity", "equity", "real", "crypto"]
+    for _ in range(500):
+        value = rng.uniform(0.0, 400.0, 4)
+        cash = float(rng.uniform(0.0, 50.0))
+        target = rng.dirichlet(np.ones(4)) * rng.uniform(0.5, 1.0)
+        order = plan_orders(target, value, cash, np.ones(4, dtype=bool), classes, costs, rules)
+        fees, fx = trading_costs(order, classes, costs)
+        assert cash - order.sum() - fees.sum() - fx >= -1e-9
+
+
+def test_forced_exit_takes_the_haircut(panel):
+    dead = make_panel()
+    for field in ("open", "high", "low", "close", "close_usd"):
+        getattr(dead, field).loc[dead.close.index[1100]:, "BTC"] = np.nan
+    feats = compute_features(dead, CFG)
+    kind = run_backtest(dead, feats, CFG, capital=10_000.0, rules=TradingRules(delist_haircut=0.0))
+    harsh = run_backtest(dead, feats, CFG, capital=10_000.0, rules=TradingRules(delist_haircut=0.5))
+    forced = harsh.trades[harsh.trades["reason"] == "delisted"]
+    if len(forced):                                       # only meaningful if BTC was held
+        assert harsh.equity.iloc[-1] < kind.equity.iloc[-1]
+
+
+def test_static_mix_refuses_assets_that_do_not_exist_yet(panel):
+    late = make_panel()
+    late.close.iloc[:50, late.close.columns.get_loc("BTC")] = np.nan
+    with pytest.raises(ValueError):
+        static_mix(late, {"BTC": 1.0}, str(late.close.index[0].date()))
+
+
+def test_bootstrap_drawdown_counts_a_loss_on_day_one():
+    ci = stats.bootstrap_ci(np.full(300, -0.10), 252, n_boot=20)
+    assert ci["max_drawdown"]["p50"] < -0.999                # everything is lost, from the first day
+
+
+def test_autocorrelation_only_ever_widens_the_error_bar():
+    rng = np.random.default_rng(12)
+    iid = rng.normal(0.001, 0.01, 800)
+    trending = np.convolve(iid, np.ones(5) / 5, mode="same") * 2.2
+    assert stats.autocorrelation_inflation(iid) < 1.15
+    assert stats.autocorrelation_inflation(trending) > 1.3

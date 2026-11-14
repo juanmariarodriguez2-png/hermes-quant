@@ -71,15 +71,37 @@ def filter_drift(z: np.ndarray, lam: float, loading: np.ndarray | None = None,
     return mean, var
 
 
+def session_returns(close: pd.DataFrame, tradable: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Log return between consecutive *traded* sessions, dated on the later one, and
+    the number of calendar days each return covers.
+
+    Computing the return session-to-session (rather than masking daily returns)
+    keeps everything that happened in between: a currency move on a US holiday, or
+    the gap after missing candles, lands in the next session's return in full."""
+    returns = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+    spans = pd.DataFrame(np.nan, index=close.index, columns=close.columns)
+    for col in close.columns:
+        px = close[col].where(tradable[col]).dropna()
+        if len(px) < 2:
+            continue
+        r = np.log(px / px.shift(1))
+        gap = pd.Series(px.index, index=px.index).diff().dt.days
+        returns.loc[px.index, col] = r
+        spans.loc[px.index, col] = gap
+    return returns, spans
+
+
 def trend_probability(returns: pd.DataFrame, vol_annual: pd.DataFrame,
                       half_lives: tuple[float, ...] = DEFAULT_HALF_LIVES,
-                      winsor: float = 4.0, periods_per_year: int = 365) -> dict[str, pd.DataFrame]:
+                      winsor: float = 4.0, periods_per_year: int = 365,
+                      spans: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
     """Run the filter bank on every column.
 
     ``returns`` are log returns on a calendar-day index with NaN on days the asset
-    did not trade; the return on the next session then spans several days and is
-    treated as such. ``vol_annual`` is the contemporaneous volatility estimate; it
-    is lagged one day here so each return is scaled by a forecast made *before* it.
+    did not trade; ``spans`` gives the calendar days each return covers (see
+    :func:`session_returns`; inferred from the gaps when omitted). ``vol_annual``
+    is the contemporaneous volatility estimate; it is lagged one day here so each
+    return is scaled by a forecast made *before* it.
 
     Returns a dict with
       prob    mean over horizons of P(trend > 0), in (0, 1)
@@ -88,6 +110,7 @@ def trend_probability(returns: pd.DataFrame, vol_annual: pd.DataFrame,
     """
     daily_vol = (vol_annual.shift(1) / np.sqrt(periods_per_year)).to_numpy(dtype=float)
     r = returns.to_numpy(dtype=float)
+    given = None if spans is None else spans.to_numpy(dtype=float)
     n_rows, n_cols = r.shape
     probs = np.full((n_rows, n_cols), np.nan)
     sharpe = np.full((n_rows, n_cols), np.nan)
@@ -96,11 +119,14 @@ def trend_probability(returns: pd.DataFrame, vol_annual: pd.DataFrame,
         observed = np.isfinite(rj) & np.isfinite(daily_vol[:, j]) & (daily_vol[:, j] > 0)
         # calendar days covered by each observed return
         span = np.ones(n_rows)
-        last = -1
-        for t in range(n_rows):
-            if np.isfinite(rj[t]):
-                span[t] = t - last if last >= 0 else 1.0
-                last = t
+        if given is not None:
+            span = np.where(np.isfinite(given[:, j]), given[:, j], 1.0)
+        else:
+            last = -1
+            for t in range(n_rows):
+                if np.isfinite(rj[t]):
+                    span[t] = t - last if last >= 0 else 1.0
+                    last = t
         span = np.clip(span, 1.0, 10.0)
         z = np.full(n_rows, np.nan)
         z[observed] = rj[observed] / (daily_vol[observed, j] * np.sqrt(span[observed]))

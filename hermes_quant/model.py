@@ -37,9 +37,11 @@ class ModelConfig:
     min_score: float = 0.05                      # below this trend score: no tactical position
     score_full: float = 0.50                     # full position once P(trend up) >= 75%
     # Strategic floor: the share of a sleeve's budget held regardless of trend.
-    # Equities and real assets carry a long-run risk premium, so half is held as a
-    # core; crypto has no such anchor (and -80% bear markets), so it is trend-only.
-    strategic_floor: dict = field(default_factory=lambda: {"equity": 0.5, "real": 0.5, "crypto": 0.0})
+    # Funds (equities, metals) are always held: on the design sample a trend filter
+    # cost more in commissions and whipsaws than it saved. Crypto is trend-only: there
+    # the filter halved the worst drawdown, and an asset with no cash flows and -80%
+    # bear markets gets no permanent seat. See research/04_design_sample.py.
+    strategic_floor: dict = field(default_factory=lambda: {"equity": 1.0, "real": 1.0, "crypto": 0.0})
     # --- volatility
     range_vol: bool = True
     vol_fast_halflife: float = 10.0
@@ -66,8 +68,9 @@ class ModelConfig:
     regime: bool = True
     regime_strength: float = 0.75                # exposure multiplier = 1 - strength * P(turbulent)
     regime_smooth_halflife: float = 5.0          # days; damps day-to-day flicker of the probability
-    # Only sleeves whose turbulent state had clearly worse risk-adjusted returns in
-    # real time get the overlay. For crypto it did not (see research/03_regime_test.py).
+    # Equities only. The overlay passed the real-time test there and cut drawdowns at
+    # no cost in Sharpe; applied to crypto it lowered the Sharpe ratio of every
+    # structure tried (research/03_regime_test.py, research/04_design_sample.py).
     regime_proxy: dict = field(default_factory=lambda: {"equity": "SPY"})
     hmm_min_obs: int = 730
     hmm_refit_every: int = 30
@@ -75,6 +78,17 @@ class ModelConfig:
 
     def with_(self, **changes) -> "ModelConfig":
         return replace(self, **changes)
+
+
+# Risk profiles. "balanced" is the configuration frozen on the design sample. "growth"
+# is the same model with a higher volatility target and half of the risk budget in
+# crypto, for investors who accept deeper drawdowns. Neither was tuned on the hold-out.
+PROFILES = {
+    "balanced": ModelConfig(),
+    "growth": ModelConfig(target_vol=0.20, risk_share={"equity": 0.30, "real": 0.20, "crypto": 0.50},
+                          max_weight={"crypto": 0.25, "equity": 0.35, "real": 0.30},
+                          class_cap={"crypto": 0.50, "equity": 1.00, "real": 0.50}),
+}
 
 
 @dataclass
@@ -131,8 +145,8 @@ def compute_features(panel: Panel, cfg: ModelConfig,
     vol = volatility.ewma_vol(proxy, cfg.vol_fast_halflife, cfg.vol_slow_halflife, cfg.vol_fast_weight)
 
     if cfg.signal == "kalman":
-        observed = returns.where(panel.tradable)    # NaN when shut -> multi-day spans handled
-        k = kalman.trend_probability(observed, vol, cfg.half_lives)
+        observed, spans = kalman.session_returns(close, panel.tradable)
+        k = kalman.trend_probability(observed, vol, cfg.half_lives, spans=spans)
         score, prob_up, latent = k["score"], k["prob"], k["sharpe"]
     elif cfg.signal == "tsmom":
         score = _tsmom_score(close, vol, cfg.tsmom_lookbacks)
@@ -142,6 +156,8 @@ def compute_features(panel: Panel, cfg: ModelConfig,
 
     history = close.notna().cumsum()
     base = (history >= cfg.min_history_days) & close.notna() & vol.notna() & score.notna()
+    if panel.investable is not None:               # live venue gate: illiquid markets are off limits
+        base &= panel.investable.reindex_like(base).fillna(False).astype(bool)
     eligible = base.copy()
     crypto = [s for s in close.columns if panel.classes[s] == "crypto"]
     if crypto:

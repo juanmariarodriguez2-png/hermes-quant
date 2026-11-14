@@ -31,10 +31,13 @@ def qlike(daily_var, realised, asset, lo):
 
 def main() -> None:
     panel = load_panel()
-    c = panel.close
+    # Cut the raw data at the design boundary BEFORE building anything: a forecast
+    # made on 28 Dec 2021 must not be scored against returns from January 2022.
+    cut = slice(None, DESIGN_END)
+    c = panel.close.loc[cut]
     cc = np.log(c / c.shift(1)) ** 2
-    realised = cc.rolling(7).sum().shift(-7)
-    proxy = V.daily_variance_proxy(panel.open, panel.high, panel.low, c)
+    realised = cc.rolling(7).sum().shift(-7)             # NaN for the last 7 days by construction
+    proxy = V.daily_variance_proxy(panel.open.loc[cut], panel.high.loc[cut], panel.low.loc[cut], c)
     ew = lambda x, hl: x.ewm(halflife=hl, min_periods=60).mean()  # noqa: E731
     candidates = {
         "close-to-close, EWMA hl 21 (RiskMetrics baseline)": ew(cc, 21),

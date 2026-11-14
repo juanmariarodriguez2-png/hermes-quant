@@ -25,8 +25,8 @@ PANEL_START = "2005-01-03"
 TEST_START = "2017-01-01"
 
 
-def load_panel() -> Panel:
-    return build_panel(RESEARCH, start=PANEL_START)
+def load_panel(extended_funds: bool = False) -> Panel:
+    return build_panel(RESEARCH, start=PANEL_START, extended_funds=extended_funds)
 
 
 ALL_PROXIES = {"equity": "SPY", "crypto": "BTC"}
@@ -66,10 +66,10 @@ def evaluate(name: str, panel: Panel, cfg: ModelConfig, regime: pd.DataFrame, *,
              costs: CostModel | None = None, rules: TradingRules | None = None,
              capital: float = 236.0, start: str = TEST_START, end: str | None = None,
              log: bool = True, verbose: bool = True):
-    """Run one variant and append it to the trial log.
-
-    Every configuration that is ever looked at gets recorded. The count of distinct
-    trials is what the Deflated Sharpe Ratio later charges us for."""
+    """Run one variant. With ``log=True`` it is also appended to a running journal
+    (research/results/trials.jsonl) kept for transparency. The trial registry that
+    the Deflated Sharpe Ratio uses is built separately, on design data only, by
+    04_design_sample.py."""
     feats = compute_features(panel, cfg, p_turbulent=regime)
     res = run_backtest(panel, feats, cfg, costs=costs, rules=rules, capital=capital, start=start, end=end)
     s = summary(res.equity)

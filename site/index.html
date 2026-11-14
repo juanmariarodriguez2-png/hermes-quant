@@ -171,6 +171,7 @@ footer p + p { margin-top: 6px; }
 </div></div>
 
 <main>
+<div class="wrap" id="alerts" hidden style="padding-block:14px 0"></div>
 <section class="hero"><div class="wrap">
   <div class="hero-grid">
     <div>
@@ -222,6 +223,14 @@ footer p + p { margin-top: 6px; }
     <div class="card c6"><h3 data-t="ev.stress"></h3><p class="sub" data-t="ev.stressSub"></p><div class="scroll"><table id="stress"></table></div></div>
     <div class="card c6"><h3 data-t="ev.alloc"></h3><p class="sub" data-t="ev.allocSub"></p><div class="legend" id="allocLegend"></div><div class="chart" id="allocChart"></div></div>
     <div class="card"><h3 data-t="ev.abl"></h3><p class="sub" data-t="ev.ablSub"></p><div class="scroll"><table id="ablations"></table></div><p class="note" data-t="ev.ablNote"></p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="head"><div class="eyebrow" data-t="watch.eyebrow"></div><h2 data-t="watch.title"></h2><p class="lede" data-t="watch.lede"></p></div>
+  <div class="grid">
+    <div class="card c7"><h3 data-t="radar.title"></h3><p class="sub" data-t="radar.sub"></p><div class="scroll"><table id="radar"></table></div></div>
+    <div class="card c5"><h3 data-t="deriv.title"></h3><p class="sub" data-t="deriv.sub"></p><div class="scroll"><table id="deriv"></table></div><div id="derivFacts"></div></div>
   </div>
 </div></section>
 
@@ -309,6 +318,15 @@ es: {
  "ev.abl": "Qué aporta cada pieza", "ev.ablSub": "Se quita o cambia un componente cada vez, en la muestra de diseño (2007–2021).",
  "ev.ablNote": "Lectura honesta: las piezas sofisticadas (Kalman, matrices aleatorias, paridad jerárquica) apenas cambian la rentabilidad; reducen rotación y caídas. Lo que de verdad pesa es diversificar por riesgo, fijar la volatilidad y no malgastar en comisiones.",
  "col.variant": "Variante", "col.turn": "Rotación/año", "col.costy": "Coste/año",
+ "watch.eyebrow": "Vigilado, no operado", "watch.title": "Acciones sueltas y derivados",
+ "watch.lede": "El motor puede operarlos, pero solo entra en cartera lo que ha superado una prueba honesta. Estas dos familias todavía no, y se explica por qué.",
+ "radar.title": "Radar de acciones", "radar.sub": "El mismo filtro de tendencia sobre las acciones tokenizadas más líquidas de Kraken. No se operan: su lista la eligió el mercado mirando al pasado, y sin un histórico libre de ese sesgo cualquier regla de selección sería una corazonada.",
+ "col.liq": "Volumen/día", "col.m6": "180 días",
+ "deriv.title": "Derivados: lo que cuestan hoy", "deriv.sub": "Financiación anualizada de los perpetuos de Kraken (positiva: la pagan los largos). Es un dato horario y oscila mucho.",
+ "col.market": "Mercado", "col.funding": "Financiación", "col.vol24": "Volumen 24 h",
+ "deriv.f1": "Cripto con perpetuos en vez de contado", "deriv.f1d": "coste anual: {a} en comisiones + {b} de financiación, frente a {c} al contado",
+ "deriv.f2": "Añadir cortos siguiendo la tendencia", "deriv.f2d": "Sharpe {a} frente a {b} solo largo: restó",
+ "deriv.f3": "Arbitraje de base (largo contado, corto perpetuo)", "deriv.f3d": "bitcoin: {a} en 2021, {b} en 2025, {c} en 2026. Hoy no compensa; el motor avisará si la financiación supera el 6 %",
  "old.eyebrow": "Antes y después", "old.title": "Del bot que opinaba al modelo que mide",
  "old.lede": "La versión anterior era un agente de IA que leía el mercado y decidía. Dos operaciones, dos stops. El problema no era la idea, era la aritmética.",
  "vs.h1": "", "vs.h2": "v1 · agente IA", "vs.h3": "v2 · modelo quant",
@@ -332,6 +350,8 @@ es: {
  "how.limits": "Límites que conviene conocer. Rentabilidades pasadas no garantizan futuras. La simulación usa precios de Binance y de los ETF originales como aproximación a los mercados de Kraken. El Sharpe del examen a ciegas tiene un intervalo amplio: cinco años son pocos. Esto no es asesoramiento financiero.",
  "foot.a": "Hermes Quant · proyecto de Juan Rodríguez (CUNEF). Código y metodología abiertos.",
  "foot.b": "Datos: Kraken, archivo público de Binance, Coinbase, Yahoo Finance, BCE. Revisión independiente del código con OpenAI Codex.",
+ "alert.halted": "Cortacircuitos activado: la cuenta cayó más de un 25 % desde su máximo y el modelo ha pasado todo a liquidez. No volverá a operar hasta que se revise.",
+ "alert.outage": "Hoy faltan datos de mercado: el modelo no ha operado.", "alert.stale": "Sin datos hoy para {m}: esos mercados quedan congelados hasta mañana.",
  "table": "Ver tabla", "chart": "Ver gráfico", "loading": "Cargando datos…", "nodata": "Datos no disponibles.",
 },
 en: {
@@ -399,6 +419,15 @@ en: {
  "ev.abl": "What each piece adds", "ev.ablSub": "One component removed or swapped at a time, on the design sample (2007–2021).",
  "ev.ablNote": "An honest reading: the sophisticated pieces (Kalman, random matrices, hierarchical parity) barely change the return; they lower turnover and drawdowns. What really matters is diversifying by risk, targeting volatility and not wasting money on commissions.",
  "col.variant": "Variant", "col.turn": "Turnover/yr", "col.costy": "Cost/yr",
+ "watch.eyebrow": "Watched, not traded", "watch.title": "Single stocks and derivatives",
+ "watch.lede": "The engine can trade them, but only what has passed an honest test gets into the portfolio. These two families have not yet, and here is why.",
+ "radar.title": "Stock radar", "radar.sub": "The same trend filter on Kraken's most liquid tokenized stocks. Not traded: the list was chosen by the market looking backwards, and without a history free of that bias any selection rule would be a hunch.",
+ "col.liq": "Volume/day", "col.m6": "180 days",
+ "deriv.title": "Derivatives: what they cost today", "deriv.sub": "Annualised funding on Kraken's perpetuals (positive: longs pay). It is an hourly figure and swings a lot.",
+ "col.market": "Market", "col.funding": "Funding", "col.vol24": "24h volume",
+ "deriv.f1": "Crypto through perpetuals instead of spot", "deriv.f1d": "annual cost: {a} in fees + {b} in funding, against {c} for spot",
+ "deriv.f2": "Adding trend-following shorts", "deriv.f2d": "Sharpe {a} against {b} long-only: it subtracted",
+ "deriv.f3": "Basis trade (long spot, short perpetual)", "deriv.f3d": "bitcoin: {a} in 2021, {b} in 2025, {c} in 2026. Not worth it today; the engine will flag it if funding goes above 6%",
  "old.eyebrow": "Before and after", "old.title": "From a bot with opinions to a model that measures",
  "old.lede": "The previous version was an AI agent that read the market and decided. Two trades, two stop-outs. The idea was not the problem; the arithmetic was.",
  "vs.h1": "", "vs.h2": "v1 · AI agent", "vs.h3": "v2 · quant model",
@@ -422,6 +451,8 @@ en: {
  "how.limits": "Limits worth knowing. Past returns do not guarantee future ones. The simulation uses Binance prices and the original ETFs as a proxy for Kraken's markets. The blind-exam Sharpe has a wide interval: five years is not long. This is not financial advice.",
  "foot.a": "Hermes Quant · a project by Juan Rodríguez (CUNEF). Open code and methodology.",
  "foot.b": "Data: Kraken, Binance public archive, Coinbase, Yahoo Finance, ECB. Independent code review with OpenAI Codex.",
+ "alert.halted": "Circuit breaker tripped: the account fell more than 25% from its peak and the model has moved everything to cash. It will not trade again until it is reviewed.",
+ "alert.outage": "Market data is missing today: the model did not trade.", "alert.stale": "No data today for {m}: those markets are frozen until tomorrow.",
  "table": "Show table", "chart": "Show chart", "loading": "Loading data…", "nodata": "Data not available.",
 }};
 const NAME_ES = {"Europe equities": "Bolsa europea", "US small caps": "Small caps EE. UU.", "Emerging markets": "Emergentes", "Gold": "Oro", "Silver": "Plata", "Energy": "Energía"};
@@ -643,6 +674,12 @@ function renderLive() {
   const pill = $("#modePill"); pill.className = "pill " + (a.mode === "paper" ? "info" : armed ? "good" : "warn");
   pill.lastElementChild.textContent = T(a.mode === "paper" ? "mode.paper" : armed ? "mode.live" : "mode.validate") + " · " + a.profile.toUpperCase();
   $("#stamp").textContent = T("updated") + " " + dateFmt(LIVE.meta.bar_date);
+  const al = $("#alerts"), notes = [];
+  if (a.halted) notes.push(["crit", T("alert.halted")]);
+  if (LIVE.meta.data_outage) notes.push(["warn", T("alert.outage")]);
+  else if ((LIVE.meta.stale_markets || []).length) notes.push(["warn", T("alert.stale", { m: LIVE.meta.stale_markets.join(", ") })]);
+  al.hidden = !notes.length;
+  al.replaceChildren(...notes.map(([k, text]) => h("p", { class: "callout", style: `border-left-color:var(--${k});margin-bottom:8px`, text })));
   $("#ver").textContent = "v" + LIVE.meta.version;
   $("#nav").textContent = eur(a.nav);
   const d = $("#navDelta"); d.textContent = pct(a.return_since_inception, 2, true); d.className = "delta " + (a.return_since_inception > 0 ? "up" : a.return_since_inception < 0 ? "down" : "");
@@ -734,6 +771,36 @@ function renderLive() {
     ot.append(h("thead", {}, h("tr", {}, h("th", { text: T("col.date") }), h("th", { text: T("col.order") }), h("th", { class: "r", text: T("col.amount") }), h("th", { class: "r", text: T("col.cost") }))));
     const ob = h("tbody"); for (const o of [...a.trades].reverse().slice(0, 8)) ob.append(h("tr", {}, h("td", { class: "num", text: dateFmt(o.bar) }), h("td", {}, `${T(o.notional_eur > 0 ? "buy" : "sell")} ${o.symbol}`), h("td", { class: "r num", text: eur(Math.abs(o.notional_eur)) }), h("td", { class: "r num", text: eur(o.cost_eur) }))); ot.append(ob);
   } else ot.append(h("tbody", {}, h("tr", {}, h("td", { class: "muted", text: T("pf.noOrders") }))));
+}
+
+function renderWatch() {
+  const rt = $("#radar"), dt = $("#deriv"), df = $("#derivFacts"); rt.replaceChildren(); dt.replaceChildren(); df.replaceChildren();
+  const radar = (LIVE && LIVE.radar) || [], der = (LIVE && LIVE.derivatives) || [];
+  if (radar.length) {
+    rt.append(h("thead", {}, h("tr", {}, h("th", { text: T("col.asset") }), h("th", { text: T("col.prob") }), h("th", { class: "r", text: T("col.vol") }), h("th", { class: "r", text: T("col.m1") }), h("th", { class: "r", text: T("col.m6") }), h("th", { class: "r", text: T("col.liq") }))));
+    const b = h("tbody");
+    for (const r of radar) { const up = r.prob_up >= 0.5, w = Math.abs(r.prob_up - 0.5) * 100;
+      b.append(h("tr", {}, h("td", {}, h("div", { class: "asset" }, h("b", { text: r.name }), h("span", { text: r.symbol }))),
+        h("td", {}, h("div", { class: "prob" }, h("div", { class: "track" }, h("div", { class: "fill", style: `${up ? "left:50%" : "right:50%"};width:${w}%;background:${css(up ? "--accent" : "--c-neg")}` })), h("span", { class: "num", text: pct(r.prob_up, 0) }))),
+        h("td", { class: "r num", text: pct(r.vol, 0) }), h("td", { class: "r num", text: pct(r.ret_30d, 1, true) }), h("td", { class: "r num", text: pct(r.ret_180d, 1, true) }),
+        h("td", { class: "r num", text: new Intl.NumberFormat(loc(), { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 0 }).format(r.daily_usd) }))); }
+    rt.append(b);
+  } else rt.append(h("tbody", {}, h("tr", {}, h("td", { class: "muted", text: T("nodata") }))));
+  if (der.length) {
+    dt.append(h("thead", {}, h("tr", {}, h("th", { text: T("col.market") }), h("th", { class: "r", text: T("col.funding") }), h("th", { class: "r", text: T("col.vol24") }))));
+    const b = h("tbody");
+    for (const r of der) b.append(h("tr", {}, h("td", {}, nm(r.name), " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "r num", text: pct(r.funding_annual, 1, true) }), h("td", { class: "r num", text: new Intl.NumberFormat(loc(), { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 0 }).format(r.volume_24h_usd) })));
+    dt.append(b);
+  }
+  const D = RES && RES.derivatives;
+  if (D) {
+    const [spot, perp, ls] = D.sleeve, btc = D.carry.BTC.by_year;
+    const fact = (k, v, d) => h("div", { style: "padding:9px 0;border-top:1px solid var(--hair)" }, h("div", { style: "font-weight:500;font-size:13.5px", text: k }), h("div", { class: "ink2", style: "font-size:13px", text: d }));
+    df.style.marginTop = "12px";
+    df.append(fact(T("deriv.f1"), "", T("deriv.f1d", { a: pct(perp.fees_per_year, 1), b: pct(-perp.funding_per_year, 1), c: pct(spot.fees_per_year, 1) })),
+      fact(T("deriv.f2"), "", T("deriv.f2d", { a: num(ls.sharpe, 2), b: num(perp.sharpe, 2) })),
+      fact(T("deriv.f3"), "", T("deriv.f3d", { a: pct(btc[2021], 0, true), b: pct(btc[2025], 0, true), c: pct(btc[2026], 0, true) })));
+  }
 }
 
 function renderHeat() {
@@ -829,7 +896,7 @@ function renderResearch() {
   nz.append(h("p", { class: "note", text: T("old.noiseNote") }));
 }
 
-function renderAll() { renderStatic(); renderLive(); renderResearch(); }
+function renderAll() { renderStatic(); renderLive(); renderResearch(); renderWatch(); }
 $("#lang-es").addEventListener("click", () => { lang = "es"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#lang-en").addEventListener("click", () => { lang = "en"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#corrToggle").addEventListener("click", () => { corrMode = corrMode === "cleaned" ? "raw" : "cleaned"; renderHeat(); });

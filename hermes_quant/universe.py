@@ -94,8 +94,8 @@ LIVE_INSTRUMENTS: list[Instrument] = [
     Instrument("TRX", "TRXEUR", "crypto", "EUR"),
     Instrument("BCH", "BCHEUR", "crypto", "EUR"),
     # Tokenized ETFs (xStocks), quoted in USD.
-    Instrument("SPY", "SPYxUSD", "equity", "USD", tokenized=True, perp="PF_SPXUSD"),
-    Instrument("QQQ", "QQQxUSD", "equity", "USD", tokenized=True, perp="PF_US100USD"),
+    Instrument("SPY", "SPYxUSD", "equity", "USD", tokenized=True, perp="PF_SPYXUSD"),
+    Instrument("QQQ", "QQQxUSD", "equity", "USD", tokenized=True, perp="PF_QQQXUSD"),
     Instrument("IWM", "IWMxUSD", "equity", "USD", tokenized=True),
     Instrument("VGK", "VGKxUSD", "equity", "USD", tokenized=True),
     Instrument("IEMG", "IEMGxUSD", "equity", "USD", tokenized=True),

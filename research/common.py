@@ -15,9 +15,7 @@ from hermes_quant.model import ModelConfig, regime_probabilities  # noqa: E402
 
 RESEARCH = ROOT / "data" / "research"
 RESULTS = ROOT / "research" / "results"
-FIGURES = ROOT / "docs" / "figures"
 RESULTS.mkdir(parents=True, exist_ok=True)
-FIGURES.mkdir(parents=True, exist_ok=True)
 
 PANEL_START = "2005-01-03"
 # First day the strategy is allowed to trade in the headline test. BTC (2015-07) is

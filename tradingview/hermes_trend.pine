@@ -1,0 +1,76 @@
+//@version=5
+// Hermes Quant · trend probability
+//
+// The probability that the underlying trend of this chart is UP, as estimated by the
+// Hermes Quant model (https://github.com/juanmariarodriguez2-png/hermes-quant).
+//
+// How it works, in three lines:
+//   1. Each bar's return is divided by a volatility forecast made the bar before,
+//      so a 2% move in a calm market counts for more than a 2% move in a storm.
+//   2. Four Kalman filters (half-lives 30/60/120/240 bars) estimate the hidden drift
+//      of those normalised returns, each with its own uncertainty.
+//   3. The plotted line is the average probability that the drift is positive.
+//
+// Above 50%: more likely trending up than down. It is a measurement, not a signal to
+// buy: the model itself only uses it for crypto, and only alongside risk limits.
+//
+// Use on DAILY charts. This is a faithful simplification of the Python model (it omits
+// the wick filter and the bias calibration of the range estimator).
+indicator("Hermes Quant · trend probability", shorttitle = "Hermes P(trend ↑)", overlay = false, precision = 1, format = format.percent)
+
+barsPerYear = input.int(365, "Bars per year (365 crypto, 252 stocks)", minval = 1)
+volFast     = input.float(10.0, "Volatility: fast half-life (bars)", minval = 1)
+volSlow     = input.float(126.0, "Volatility: slow half-life (bars)", minval = 1)
+fastWeight  = input.float(0.7, "Volatility: weight of the fast leg", minval = 0, maxval = 1)
+clip        = input.float(4.0, "Clip normalised returns at ±", minval = 1)
+
+f_alpha(halfLife) =>
+    1.0 - math.pow(0.5, 1.0 / halfLife)
+
+// Standard normal CDF (Abramowitz & Stegun 26.2.17)
+f_cdf(x) =>
+    t = 1.0 / (1.0 + 0.2316419 * math.abs(x))
+    d = 0.3989422804 * math.exp(-x * x / 2.0)
+    p = d * t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))))
+    x >= 0 ? 1.0 - p : p
+
+// ---- volatility: Garman-Klass range term averaged with the squared close-to-close return
+ret       = math.log(close / close[1])
+overnight = math.pow(math.log(open / close[1]), 2)
+intraday  = 0.5 * math.pow(math.log(high / low), 2) - (2.0 * math.log(2.0) - 1.0) * math.pow(math.log(close / open), 2)
+proxy     = 0.5 * (overnight + math.max(intraday, 0.0)) + 0.5 * ret * ret
+
+var float varFast = na
+var float varSlow = na
+if not na(proxy)
+    varFast := na(varFast) ? proxy : varFast + f_alpha(volFast) * (proxy - varFast)
+    varSlow := na(varSlow) ? proxy : varSlow + f_alpha(volSlow) * (proxy - varSlow)
+dailyVar  = fastWeight * varFast + (1.0 - fastWeight) * varSlow
+volAnnual = math.sqrt(dailyVar * barsPerYear)
+
+// ---- return normalised by the PREVIOUS bar's forecast: nothing here looks ahead
+z = ret / math.sqrt(dailyVar[1])
+z := na(z) ? 0.0 : math.max(-clip, math.min(clip, z))
+
+// ---- steady-state Kalman filter of a slowly drifting mean. Its gain K makes it an
+//      exponential average; its posterior variance is K, so P(drift > 0) = Phi(mean / sqrt(K)).
+f_prob(halfLife) =>
+    k = f_alpha(halfLife)
+    var float mean = 0.0
+    mean := mean + k * (z - mean)
+    f_cdf(mean / math.sqrt(k))
+
+prob = (f_prob(30.0) + f_prob(60.0) + f_prob(120.0) + f_prob(240.0)) / 4.0 * 100.0
+
+up     = color.new(#2a78d6, 0)
+down   = color.new(#e34948, 0)
+middle = hline(50, "Even odds", color = color.new(color.gray, 40), linestyle = hline.style_solid)
+probLine = plot(prob, "P(trend up)", color = prob >= 50 ? up : down, linewidth = 2)
+base   = plot(50, "50", display = display.none)
+fill(probLine, base, color = prob >= 50 ? color.new(#2a78d6, 85) : color.new(#e34948, 85))
+hline(75, "Full conviction", color = color.new(color.gray, 75), linestyle = hline.style_dotted)
+hline(25, "", color = color.new(color.gray, 75), linestyle = hline.style_dotted)
+plot(volAnnual * 100.0, "Annualised volatility", display = display.data_window + display.status_line, color = color.gray)
+
+alertcondition(ta.crossover(prob, 50), "Trend turns up", "{{ticker}}: Hermes trend probability crossed above 50%")
+alertcondition(ta.crossunder(prob, 50), "Trend turns down", "{{ticker}}: Hermes trend probability crossed below 50%")

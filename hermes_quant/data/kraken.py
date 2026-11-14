@@ -93,15 +93,26 @@ def sign(uri_path: str, postdata: str, nonce: str, secret_b64: str) -> str:
     return base64.b64encode(mac.digest()).decode()
 
 
+def pair_rules(tokenized: bool = False) -> dict[str, dict]:
+    """Precision and minimum order size for every pair, keyed by its ``altname``."""
+    out = {}
+    for info in asset_pairs(tokenized).values():
+        out[info["altname"]] = {"price_decimals": int(info["pair_decimals"]), "lot_decimals": int(info["lot_decimals"]),
+                                "ordermin": float(info.get("ordermin") or 0.0), "costmin": float(info.get("costmin") or 0.0)}
+    return out
+
+
 class KrakenClient:
     """Minimal signed client. The API key must NOT have withdrawal permission."""
 
     def __init__(self, key: str, secret: str):
         self._key, self._secret = key, secret
+        self._nonce = 0
 
     def _private(self, endpoint: str, data: dict | None = None) -> dict:
         path = f"/0/private/{endpoint}"
-        payload = {"nonce": str(int(time.time() * 1000)), **(data or {})}
+        self._nonce = max(self._nonce + 1, int(time.time() * 1000))      # strictly increasing
+        payload = {"nonce": str(self._nonce), **(data or {})}
         body = urllib.parse.urlencode(payload)
         headers = {**UA, "API-Key": self._key, "API-Sign": sign(path, body, payload["nonce"], self._secret),
                    "Content-Type": "application/x-www-form-urlencoded"}
@@ -114,15 +125,13 @@ class KrakenClient:
     def balances(self) -> dict[str, float]:
         return {k: float(v) for k, v in self._private("Balance").items()}
 
-    def add_order(self, pair: str, side: str, volume: float, *, tokenized: bool = False,
-                  ordertype: str = "market", price: float | None = None, post_only: bool = False,
+    def add_order(self, pair: str, side: str, volume: str, *, price: str, tokenized: bool = False,
                   validate: bool = True) -> dict:
-        """Place (or, with validate=True, only validate) an order."""
-        data = {"pair": pair, "type": side, "ordertype": ordertype, "volume": f"{volume:.8f}"}
-        if price is not None:
-            data["price"] = f"{price:.10g}"
-        if post_only:
-            data["oflags"] = "post"
+        """Immediate-or-cancel limit order: it fills at ``price`` or better right now,
+        and whatever does not fill is cancelled by the exchange. With validate=True
+        (the default) Kraken only checks the order and discards it."""
+        data = {"pair": pair, "type": side, "ordertype": "limit", "volume": volume, "price": price,
+                "timeinforce": "IOC"}
         if tokenized:
             data["asset_class"] = TOKENIZED
         if validate:

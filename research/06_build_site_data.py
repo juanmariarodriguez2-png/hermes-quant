@@ -96,6 +96,7 @@ def main() -> None:
         "volatility_forecast": json.loads((RESULTS / "volatility_forecast.json").read_text()),
         "trials": json.loads((RESULTS / "design_trials.json").read_text())["n_trials"],
         "selected": design.get("selected"),
+        "derivatives": json.loads((RESULTS / "derivatives.json").read_text()) if (RESULTS / "derivatives.json").exists() else None,
         "n_tests": sum(f.read_text().count("\ndef test_") for f in (ROOT / "tests").glob("test_*.py")),
         "legacy": LEGACY,
     }

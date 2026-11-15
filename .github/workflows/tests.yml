@@ -4,6 +4,7 @@ on:
   push:
     paths: ["hermes_quant/**", "tests/**", "requirements*.txt"]
   pull_request: {}
+  workflow_dispatch: {}
 
 permissions:
   contents: read

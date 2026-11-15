@@ -1,5 +1,8 @@
 # Hermes Quant
 
+[![Hermes daily run](https://github.com/juanmariarodriguez2-png/hermes-quant/actions/workflows/daily.yml/badge.svg)](https://github.com/juanmariarodriguez2-png/hermes-quant/actions/workflows/daily.yml)
+[![tests](https://github.com/juanmariarodriguez2-png/hermes-quant/actions/workflows/tests.yml/badge.svg)](https://github.com/juanmariarodriguez2-png/hermes-quant/actions/workflows/tests.yml)
+
 A systematic, multi-asset trading model that runs by itself every night: it sizes positions in US equities, gold, silver and crypto from fixed public rules, trades them on one Kraken account, and publishes everything it sees and does.
 
 **Live dashboard:** https://juanmariarodriguez2-png.github.io/hermes-quant/ · **Guía en español:** [docs/GUIA.md](docs/GUIA.md) · **Research log:** [docs/RESEARCH.md](docs/RESEARCH.md)

@@ -38,8 +38,8 @@ Pedí a otra IA que auditara el código buscando trampas antes de mirar el resul
 
 Todo es público: código, metodología, errores y un panel que se actualiza solo cada noche.
 
-Panel: [enlace]
-Código: [enlace]
+Panel: https://juanmariarodriguez2-png.github.io/hermes-quant/
+Código: https://github.com/juanmariarodriguez2-png/hermes-quant
 
 Estudio Economía y Data Science en CUNEF y busco prácticas de verano en mercados, riesgos o datos. Si trabajas en esto y ves algo mejorable, me encantaría leerte.
 
@@ -79,8 +79,8 @@ I asked another AI to audit the code for flaws before looking at the final resul
 
 Everything is public: code, method, mistakes, and a dashboard that updates itself every night.
 
-Dashboard: [link]
-Code: [link]
+Dashboard: https://juanmariarodriguez2-png.github.io/hermes-quant/
+Code: https://github.com/juanmariarodriguez2-png/hermes-quant
 
 I study Economics and Data Science at CUNEF and I am looking for a summer internship in markets, risk or data. If you work in this field and see something to improve, I would love to hear it.
 

@@ -19,7 +19,7 @@ No hay servidor, ni Docker, ni coste de IA. Si el portátil está apagado, da ig
 2. En el repositorio: **Settings → Pages → Build and deployment → Source: GitHub Actions.**
 3. **Actions → Hermes daily run → Run workflow** para lanzar la primera ejecución a mano.
 
-A los dos minutos el panel estará en `https://TU_USUARIO.github.io/hermes-quant/`.
+A los dos minutos el panel estará en https://juanmariarodriguez2-png.github.io/hermes-quant/.
 
 No hace falta tocar los permisos de Actions: el flujo pide por sí mismo los que necesita.
 

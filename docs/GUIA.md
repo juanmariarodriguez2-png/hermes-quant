@@ -13,6 +13,13 @@ Cada noche, hacia las 01:23 UTC (las 2:23 en España en invierno, las 3:23 en ve
 
 No hay servidor, ni Docker, ni coste de IA. Si el portátil está apagado, da igual.
 
+## Dónde verlo
+
+- **Panel:** https://juanmariarodriguez2-png.github.io/hermes-quant/ — el informe: qué ve el modelo, qué tiene la cuenta y la evidencia que lo respalda. Cambia una vez al día, tras la ejecución nocturna.
+- **Terminal en vivo:** https://juanmariarodriguez2-png.github.io/hermes-quant/terminal.html — la pantalla de seguimiento: precios, velas, libro de órdenes y operaciones del mercado en tiempo real (canal público de Kraken), junto a la señal del modelo para cada mercado, el valor de la cuenta al momento, las órdenes pendientes y el registro de lo que decidió el bot en su última ejecución. Escribe un símbolo y pulsa Intro para cambiar de mercado.
+
+El modelo decide una vez al día y opera poco, así que en el terminal lo que se mueve es el mercado; las decisiones cambian cada noche.
+
 ## 2. Publicarlo (una sola vez, 3 minutos)
 
 1. Sube la carpeta a un repositorio de GitHub llamado `hermes-quant`.

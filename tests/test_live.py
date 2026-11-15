@@ -437,3 +437,15 @@ def test_live_run_on_a_restricted_account_lists_the_stock_orders_instead_of_send
     assert {o["symbol"] for o in again["account"]["manual_orders"]} == set(by_hand)
     paper = run_daily.run(mode="paper", offline=True, now=MONDAY, live_dir=sandbox / "paper", site_dir=sandbox / "site2")
     assert paper["account"]["manual_orders"] == []                                  # a simulated account fills everything
+
+
+def test_the_published_schedule_matches_the_workflow_and_assets_say_how_to_follow_them(sandbox):
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "daily.yml").read_text()
+    minute, hour = workflow.split('cron: "')[1].split('"')[0].split()[:2]
+    assert run_daily.SCHEDULE_UTC == f"{int(hour):02d}:{int(minute):02d}"
+    out = run_daily.run(mode="paper", offline=True, now=MONDAY, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    assert out["meta"]["schedule_utc"] == run_daily.SCHEDULE_UTC
+    btc = next(a for a in out["model"]["assets"] if a["symbol"] == "BTC")
+    spy = next(a for a in out["model"]["assets"] if a["symbol"] == "SPY")
+    assert (btc["pair"], btc["quote"], btc["tokenized"]) == ("XBTEUR", "EUR", False)
+    assert (spy["pair"], spy["quote"], spy["tokenized"]) == ("SPYxUSD", "USD", True)

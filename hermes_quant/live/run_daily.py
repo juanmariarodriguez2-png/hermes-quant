@@ -67,6 +67,7 @@ SITE = ROOT / "site"
 MAX_DRAWDOWN_HALT = 0.25        # circuit breaker: stop and go to cash after a 25% fall from the peak
 OUTAGE_SHARE = 1.0 / 3.0        # this share of markets without data = do not trade today
 NEW_YORK = ZoneInfo("America/New_York")
+SCHEDULE_UTC = "01:23"          # when the nightly workflow runs; a test keeps it equal to the workflow's cron
 
 
 def _now() -> datetime:
@@ -260,6 +261,9 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         trades.to_csv(trades_path, index=False)
 
     snapshot = model_snapshot(panel, features, cfg, t, allocation)
+    for row in snapshot["assets"]:                        # what the live terminal needs to follow each market
+        inst = by_symbol[row["symbol"]]
+        row.update(pair=inst.kraken_pair, quote=inst.quote, tokenized=inst.tokenized)
     positions = [{"symbol": s, "name": NAMES.get(s, s), "class": panel.classes[s], "units": units.get(s, 0.0),
                   "price": prices.get(s), "value": float(v), "weight": float(v / nav) if nav else 0.0,
                   "target": float(state["target"].get(s, 0.0))}
@@ -278,7 +282,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         "orders_today": [f.as_dict() for f in fills], "manual_orders": manual_orders}
     out = {"meta": {"generated_at": state["last_run"], "bar_date": bar, "version": __version__,
                     "data_errors": data_errors, "stale_markets": stale, "data_outage": bool(outage),
-                    "price_source": "kraken"},
+                    "price_source": "kraken", "schedule_utc": SCHEDULE_UTC},
            "account": account_view, "model": snapshot,
            "radar": [] if offline else monitors.stock_radar(STOCK_RADAR),
            "derivatives": [] if offline else monitors.derivatives_monitor()}

@@ -5,7 +5,7 @@
 
 A systematic, multi-asset trading model that runs by itself every night: it sizes positions in US equities, gold, silver and crypto from fixed public rules, trades them on one Kraken account, and publishes everything it sees and does.
 
-**Live dashboard:** https://juanmariarodriguez2-png.github.io/hermes-quant/ · **Guía en español:** [docs/GUIA.md](docs/GUIA.md) · **Research log:** [docs/RESEARCH.md](docs/RESEARCH.md)
+**Live dashboard:** https://juanmariarodriguez2-png.github.io/hermes-quant/ · **Live terminal:** https://juanmariarodriguez2-png.github.io/hermes-quant/terminal.html · **Guía en español:** [docs/GUIA.md](docs/GUIA.md) · **Research log:** [docs/RESEARCH.md](docs/RESEARCH.md)
 
 It replaced an LLM agent that decided trades by reading the market. That agent made two trades, was stopped out of both, and cost more to run than it could plausibly earn. This is what was built instead, and how it was checked.
 

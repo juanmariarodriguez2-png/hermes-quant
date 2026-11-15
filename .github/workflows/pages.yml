@@ -1,0 +1,42 @@
+name: Publish dashboard
+
+# Publishes the site/ folder when the pages themselves change. It does not run the
+# model: the nightly run publishes too, with the day's data.
+on:
+  push:
+    branches: [main]
+    paths: ["site/**"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-site
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # the nightly run commits site/live.json and publishes by itself
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

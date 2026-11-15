@@ -86,7 +86,9 @@ python -m pytest tests -q
 
 The GitHub Actions workflow in `.github/workflows/daily.yml` does this every night, commits the new state and publishes the dashboard. No server, no laptop, no API bill.
 
-Real trading is opt-in and has three locks: `HERMES_MODE=live`, Kraken API keys without withdrawal permission, and `HERMES_LIVE_ARMED=yes`. Until the third is set, every order is sent with Kraken's validate-only flag. The live adapter has been tested against a simulated exchange and Kraken's documented signing example, **not** against a funded account: run it validate-only first. Details in [docs/GUIA.md](docs/GUIA.md).
+Real trading is opt-in and has three locks: `HERMES_MODE=live`, Kraken API keys without withdrawal permission, and `HERMES_LIVE_ARMED=yes`. Until the third is set, every order is sent with Kraken's validate-only flag. A manual workflow, *Kraken connection check*, rehearses the day's orders against the real account with the validate flag and places nothing; run it before arming. No real order has been executed yet: what is verified is that Kraken accepts them. Details in [docs/GUIA.md](docs/GUIA.md).
+
+One limit comes from the venue, not the model: Kraken takes no tokenized-stock orders by API from accounts in the European Economic Area, only by hand on kraken.com. On such an account (the default) the model trades crypto by itself and lists the equity, gold and silver orders for the owner to place; it never converts currency for an order it cannot send. Set `HERMES_TOKENIZED_API=yes` where the API does accept them.
 
 To reproduce the research:
 

@@ -87,9 +87,11 @@ def test_armed_run_sells_first_converts_then_buys_and_reports_real_fills():
     ex = FakeExchange({"ZEUR": 50.0, "XXBT": 0.002})                # 120 EUR of bitcoin to sell
     b = broker(ex, armed=True)
     fills = b.execute({"BTC": -60.0, "SPY": 80.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
-    kinds = [(o["pair"], o["side"]) for o in ex.sent]
-    assert kinds == [("XBTEUR", "sell"), ("EURUSD", "sell"), ("SPYxUSD", "buy")]
-    assert not any(o["validate"] for o in ex.sent)
+    real = [(o["pair"], o["side"]) for o in ex.sent if not o["validate"]]
+    assert real == [("XBTEUR", "sell"), ("EURUSD", "sell"), ("SPYxUSD", "buy")]
+    rehearsals = [i for i, o in enumerate(ex.sent) if o["validate"]]
+    conversion = next(i for i, o in enumerate(ex.sent) if o["pair"] == "EURUSD")
+    assert len(rehearsals) == 1 and ex.sent[rehearsals[0]]["pair"] == "SPYxUSD" and rehearsals[0] < conversion
     spy = next(f for f in fills if f.symbol == "SPY")
     assert spy.status == "filled" and spy.units > 0
     assert spy.notional_eur == pytest.approx(spy.units * ex.sent[-1]["price"] / EURUSD)   # what Kraken reported
@@ -239,6 +241,7 @@ def test_live_mode_end_to_end_against_the_simulated_exchange(sandbox, monkeypatc
     """The whole daily run in live mode: starts from the exchange's balances, converts
     euros to dollars, buys the target, and does not trade again on a second run."""
     monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.setenv("HERMES_TOKENIZED_API", "yes")                 # an account Kraken lets trade them by API
     rules = {i.kraken_pair: {"price_decimals": 2, "lot_decimals": 8, "ordermin": 1e-8, "costmin": 0.5}
              for i in LIVE_INSTRUMENTS}
     rules["EURUSD"] = RULES["EURUSD"]
@@ -347,9 +350,16 @@ def test_dry_run_reports_a_rejection_with_the_exchanges_own_words(monkeypatch):
 
     monkeypatch.setattr(kraken, "pair_rules", lambda tokenized=False: RULES)
     monkeypatch.setattr(kraken, "ticker", lambda pair, tokenized=False: {"mid": {"XBTEUR": 60000.0, "SPYxUSD": 748.0, "EURUSD": EURUSD}[pair]})
+    monkeypatch.setenv("HERMES_TOKENIZED_API", "yes")                 # the run is set to send them: a refusal is a failure
     rows = check_kraken.check(Exchange({"ZEUR": 233.47}), {"target": {"SPY": 0.16}}, now=MONDAY)
     failed = [(name, detail) for name, ok, detail in rows if not ok]
     assert len(failed) == 1 and "SPY" in failed[0][0] and "Permission denied" in failed[0][1]
+
+    monkeypatch.delenv("HERMES_TOKENIZED_API")                        # the default: they are placed by hand anyway
+    rows = check_kraken.check(Exchange({"ZEUR": 233.47}), {"target": {"SPY": 0.16}}, now=MONDAY)
+    assert all(ok for _, ok, _ in rows)
+    spy = next(detail for name, _, detail in rows if "SPY" in name)
+    assert "Permission denied" in spy and "by hand" in spy            # still says what Kraken answered
 
 
 def test_a_conversion_larger_than_the_order_cap_is_split_so_the_purchases_are_fully_funded():
@@ -368,4 +378,62 @@ def test_a_conversion_that_does_not_fill_is_not_retried():
     b = broker(ex, armed=True, max_order_eur=100.0)
     b.execute({"SPY": 70.0, "QQQ": 58.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
     assert len([o for o in ex.sent if o["pair"] == "EURUSD"]) == 1
-    assert not [o for o in ex.sent if o["pair"] != "EURUSD"]                                   # no dollars, no purchases
+    assert not [o for o in ex.sent if o["pair"] != "EURUSD" and not o["validate"]]             # no dollars, no purchases
+
+
+# ----------------------------------------------------------------------------- accounts Kraken restricts
+
+
+class RefusesTokenized(FakeExchange):
+    """Kraken's answer to a tokenized-stock order sent by API from a European account."""
+
+    def add_order(self, pair, side, volume, *, price, tokenized=False, validate=True):
+        if tokenized:
+            self.sent.append({"pair": pair, "side": side, "volume": float(volume), "price": float(price),
+                              "tokenized": tokenized, "validate": validate})
+            raise kraken.KrakenError("AddOrder: EGeneral:Permission denied")
+        return super().add_order(pair, side, volume, price=price, tokenized=tokenized, validate=validate)
+
+
+def test_no_dollars_are_bought_for_purchases_the_exchange_refuses():
+    ex = RefusesTokenized({"ZEUR": 233.47})
+    fills = broker(ex, armed=True).execute({"SPY": 40.0, "QQQ": 30.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
+    assert not [o for o in ex.sent if o["pair"] == "EURUSD"]          # not one euro was converted
+    assert not [o for o in ex.sent if not o["validate"]]              # only the rehearsal reached the exchange
+    assert {f.symbol: f.status for f in fills} == {"SPY": "rejected", "QQQ": "rejected"}
+    assert all("Permission denied" in f.detail for f in fills)
+    assert ex.bal == {"ZEUR": 233.47}
+
+
+def test_tokenized_orders_are_left_for_the_owner_when_the_account_cannot_send_them():
+    ex = RefusesTokenized({"ZEUR": 233.47})
+    b = broker(ex, armed=True, tokenized_via_api=False)
+    fills = b.execute({"BTC": 30.0, "SPY": 40.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
+    assert [o["pair"] for o in ex.sent] == ["XBTEUR"]                 # crypto still trades by itself
+    by = {f.symbol: f for f in fills}
+    assert by["BTC"].status == "filled" and by["SPY"].status == "manual" and by["SPY"].units == 0.0
+    assert "ZUSD" not in ex.bal
+
+
+def test_live_run_on_a_restricted_account_lists_the_stock_orders_instead_of_sending_them(sandbox, monkeypatch):
+    monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.delenv("HERMES_TOKENIZED_API", raising=False)         # the default: a European account
+    rules = {i.kraken_pair: {"price_decimals": 2, "lot_decimals": 8, "ordermin": 1e-8, "costmin": 0.5}
+             for i in LIVE_INSTRUMENTS}
+    rules["EURUSD"] = RULES["EURUSD"]
+    shutil.copytree(sandbox / "live", sandbox / "paper")              # the same prices, for a simulated account
+    ex = RefusesTokenized({"ZEUR": 233.47})
+    armed = KrakenBroker(ex, LIVE_BY_SYMBOL, pair_rules=rules, armed=True, pause=0.0, tokenized_via_api=False)
+    kw = dict(mode="live", offline=True, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    out = run_daily.run(now=MONDAY, broker=armed, **kw)
+    a = out["account"]
+    assert not [o for o in ex.sent if o["tokenized"] or o["pair"] == "EURUSD"]     # nothing refused, nothing converted
+    assert ex.bal.get("ZUSD", 0.0) == 0.0
+    by_hand = {o["symbol"]: o["notional_eur"] for o in a["manual_orders"]}
+    assert {"SPY", "GLD"} <= set(by_hand) and all(n > 0 for n in by_hand.values())
+    assert sum(by_hand.values()) <= a["cash"]                                       # never asks for money that is not there
+    assert all(LIVE_BY_SYMBOL[s].tokenized for s in by_hand)
+    again = run_daily.run(now=MONDAY, broker=armed, **kw)                           # a standing instruction, not a one-off
+    assert {o["symbol"] for o in again["account"]["manual_orders"]} == set(by_hand)
+    paper = run_daily.run(mode="paper", offline=True, now=MONDAY, live_dir=sandbox / "paper", site_dir=sandbox / "site2")
+    assert paper["account"]["manual_orders"] == []                                  # a simulated account fills everything

@@ -363,6 +363,7 @@ es: {
  "foot.b": "Datos: Kraken, archivo público de Binance, Coinbase, Yahoo Finance, BCE. Revisión independiente del código con OpenAI Codex.",
  "alert.halted": "Cortacircuitos activado: la cuenta cayó más de un 25 % desde su máximo y el modelo ha pasado todo a liquidez. No volverá a operar hasta que se revise.",
  "alert.outage": "Hoy faltan datos de mercado: el modelo no ha operado.", "alert.stale": "Sin datos hoy para {m}: esos mercados quedan congelados hasta mañana.",
+ "alert.manual": "Órdenes pendientes de colocar a mano en kraken.com: {list}. Kraken no admite por API las acciones tokenizadas de cuentas europeas; el resto lo opera el modelo solo.", "man.buy": "comprar {v} de {s}", "man.sell": "vender {v} de {s}",
  "table": "Ver tabla", "chart": "Ver gráfico", "loading": "Cargando datos…", "nodata": "Datos no disponibles.",
 },
 en: {
@@ -464,6 +465,7 @@ en: {
  "foot.b": "Data: Kraken, Binance public archive, Coinbase, Yahoo Finance, ECB. Independent code review with OpenAI Codex.",
  "alert.halted": "Circuit breaker tripped: the account fell more than 25% from its peak and the model has moved everything to cash. It will not trade again until it is reviewed.",
  "alert.outage": "Market data is missing today: the model did not trade.", "alert.stale": "No data today for {m}: those markets are frozen until tomorrow.",
+ "alert.manual": "Orders waiting to be placed by hand on kraken.com: {list}. Kraken takes no tokenized-stock orders by API from European accounts; the model trades everything else by itself.", "man.buy": "buy {v} of {s}", "man.sell": "sell {v} of {s}",
  "table": "Show table", "chart": "Show chart", "loading": "Loading data…", "nodata": "Data not available.",
 }};
 const NAME_ES = {"Europe equities": "Bolsa europea", "US small caps": "Small caps EE. UU.", "Emerging markets": "Emergentes", "Gold": "Oro", "Silver": "Plata", "Energy": "Energía"};
@@ -689,6 +691,8 @@ function renderLive() {
   if (a.halted) notes.push(["crit", T("alert.halted")]);
   if (LIVE.meta.data_outage) notes.push(["warn", T("alert.outage")]);
   else if ((LIVE.meta.stale_markets || []).length) notes.push(["warn", T("alert.stale", { m: LIVE.meta.stale_markets.join(", ") })]);
+  const byHand = a.manual_orders || [];
+  if (byHand.length) notes.push(["accent", T("alert.manual", { list: byHand.map(o => T(o.notional_eur > 0 ? "man.buy" : "man.sell", { v: eur(Math.abs(o.notional_eur), 0), s: o.pair.slice(0, -3) })).join(" · ") })]);
   al.hidden = !notes.length;
   al.replaceChildren(...notes.map(([k, text]) => h("p", { class: "callout", style: `border-left-color:var(--${k});margin-bottom:8px`, text })));
   $("#ver").textContent = "v" + LIVE.meta.version;

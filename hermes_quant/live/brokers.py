@@ -25,7 +25,7 @@ class Fill:
     price_eur: float
     notional_eur: float     # signed, actually executed
     cost_eur: float         # fees + slippage (+ FX share), always >= 0
-    status: str = "filled"  # filled | partial | unfilled | validated | skipped | rejected
+    status: str = "filled"  # filled | partial | unfilled | validated | skipped | rejected | manual
     detail: str = ""
 
     def as_dict(self) -> dict:
@@ -81,6 +81,9 @@ _LEGACY = {"BTC": ("XXBT", "XBT"), "ETH": ("XETH", "ETH"), "XRP": ("XXRP", "XRP"
            "LTC": ("XLTC", "LTC"), "DOGE": ("XXDG", "XDG")}
 FX_PAIR = "EURUSD"
 MAX_FX_CHUNKS = 3           # a currency conversion larger than the order cap is split into at most this many orders
+BY_HAND = "place by hand on kraken.com: Kraken takes no tokenized-stock orders by API from this account"
+# Answers that mean "this account may not trade this", as opposed to "not right now".
+REFUSALS = ("Permission denied", "Invalid permissions", "restricted", "Unknown asset pair")
 
 
 class KrakenBroker:
@@ -105,6 +108,13 @@ class KrakenBroker:
       checks it and discards it. Nothing trades until the operator arms the broker.
     * ``max_order_eur`` caps every order, the currency conversions included.
     * Orders below the exchange's minimum size are skipped, not rounded up.
+    * ``tokenized_via_api=False``: tokenized stocks are never sent, and no dollars are
+      bought for them. Kraken refuses those orders by API from accounts in the European
+      Economic Area (they can only be placed by hand on kraken.com); they come back
+      with status "manual" for the owner to place.
+    * Before any euro is turned into dollars, one purchase is sent as a dry run. If the
+      exchange refuses it outright, no conversion happens: dollars are never bought for
+      orders that cannot be placed.
     * The API key should carry trade permission only, never withdrawal.
 
     NOTE: exercised against Kraken's public endpoints, its documented signing example
@@ -114,11 +124,12 @@ class KrakenBroker:
 
     def __init__(self, client: KrakenClient, instruments: dict[str, Instrument], *, pair_rules: dict[str, dict],
                  armed: bool = False, max_order_eur: float = 100.0, max_slippage: float = 0.005,
-                 wait_seconds: float = 20.0, pause: float = 1.0):
+                 wait_seconds: float = 20.0, pause: float = 1.0, tokenized_via_api: bool = True):
         self.client = client
         self.instruments = instruments
         self.rules = pair_rules
         self.armed = armed
+        self.tokenized_via_api = tokenized_via_api
         self.max_order_eur = float(max_order_eur)
         self.max_slippage = float(max_slippage)
         self.wait_seconds = wait_seconds
@@ -155,9 +166,10 @@ class KrakenBroker:
         return out
 
     # ------------------------------------------------------------------ one order
-    def _send(self, pair: str, side: str, volume: float, reference: float, tokenized: bool) -> dict:
+    def _send(self, pair: str, side: str, volume: float, reference: float, tokenized: bool, dry: bool = False) -> dict:
         """Send one capped IOC limit order. Returns what really happened:
-        {status, volume, cost, fee, detail}, with cost and fee in the pair's quote currency."""
+        {status, volume, cost, fee, detail}, with cost and fee in the pair's quote currency.
+        ``dry=True`` makes it a validate-only order even on an armed broker."""
         rule = self.rules.get(pair)
         nothing = {"volume": 0.0, "cost": 0.0, "fee": 0.0}
         if rule is None or not (reference > 0) or not math.isfinite(reference):
@@ -169,12 +181,12 @@ class KrakenBroker:
             return {**nothing, "status": "skipped", "detail": f"below exchange minimum ({rule['ordermin']})"}
         volume_s = f"{volume:.{rule['lot_decimals']}f}"
         price_s = f"{limit:.{rule['price_decimals']}f}"
+        validate = dry or not self.armed
         try:
-            res = self.client.add_order(pair, side, volume_s, price=price_s, tokenized=tokenized,
-                                        validate=not self.armed)
+            res = self.client.add_order(pair, side, volume_s, price=price_s, tokenized=tokenized, validate=validate)
         except KrakenError as exc:
             return {**nothing, "status": "rejected", "detail": str(exc)}
-        if not self.armed:
+        if validate:
             return {**nothing, "status": "validated", "detail": res.get("descr", {}).get("order", "")}
 
         txids = res.get("txid") or []
@@ -215,6 +227,10 @@ class KrakenBroker:
             for symbol in [s for s in orders if instruments[s].quote == "USD"]:
                 fills.append(Fill(symbol, 0.0, price_eur.get(symbol, float("nan")), 0.0, 0.0, "skipped", "no EUR/USD rate"))
             orders = {s: n for s, n in orders.items() if instruments[s].quote != "USD"}
+        if not self.tokenized_via_api:                             # the owner places these by hand
+            for symbol in [s for s in orders if instruments[s].tokenized]:
+                fills.append(Fill(symbol, 0.0, price_eur.get(symbol, float("nan")), 0.0, 0.0, "manual", BY_HAND))
+            orders = {s: n for s, n in orders.items() if not instruments[s].tokenized}
 
         def settle() -> None:
             if self.armed:
@@ -256,6 +272,15 @@ class KrakenBroker:
         headroom = 1.0 + self.max_slippage + 0.01
         usd_buys = {s: n for s, n in orders.items() if n > 0 and instruments[s].quote == "USD"}
         eur_buys = {s: n for s, n in orders.items() if n > 0 and instruments[s].quote != "USD"}
+        if usd_buys and has_fx and self.armed:                     # never buy dollars for orders that will be refused
+            symbol, notional = next(iter(usd_buys.items()))
+            inst, price = instruments[symbol], price_eur.get(symbol, float("nan"))
+            probe = self._send(inst.kraken_pair, "buy", min(notional, self.max_order_eur) / price, price * eurusd,
+                               inst.tokenized, dry=True)
+            if probe["status"] == "rejected" and any(word in probe["detail"] for word in REFUSALS):
+                for s in usd_buys:
+                    fills.append(Fill(s, 0.0, price_eur.get(s, float("nan")), 0.0, 0.0, "rejected", probe["detail"]))
+                usd_buys = {}
         if usd_buys and has_fx:                                    # 2) buy the dollars needed
             capped = sum(min(n, self.max_order_eur) for n in usd_buys.values())
             for _ in range(MAX_FX_CHUNKS):                         # in pieces: each one obeys the order cap

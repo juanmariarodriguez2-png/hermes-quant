@@ -29,6 +29,10 @@ HERMES_CAPITAL           starting euros for a new paper account (default 233.47)
 KRAKEN_API_KEY/SECRET    only for live mode; trade permission, never withdrawal
 HERMES_LIVE_ARMED        "yes" to send real orders; anything else = validate only
 HERMES_MAX_ORDER_EUR     cap per order in live mode             (default 100)
+HERMES_TOKENIZED_API     "yes" if Kraken accepts tokenized-stock orders by API from the
+                         account. It does not for accounts in the European Economic
+                         Area, so the default is "no": in live mode those orders are
+                         listed for the owner to place by hand on kraken.com
 HERMES_REBASE            "yes" once after a deposit or withdrawal: restart the
                          performance and drawdown clock from today's value
 TELEGRAM_BOT_TOKEN/CHAT_ID  optional daily message
@@ -169,12 +173,17 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     last_close = panel.close.ffill().iloc[t]                # a missing candle must not zero a holding
     prices, eurusd = current_prices(instruments, last_close, panel.eurusd.ffill().iloc[t], now, offline)
     armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
+    # Kraken takes no tokenized-stock orders by API from accounts in the European Economic
+    # Area: there the model sends none of them and lists them for the owner instead.
+    tokenized_api = os.environ.get("HERMES_TOKENIZED_API", "no") == "yes"
+    by_hand = np.array([mode == "live" and by_symbol[s].tokenized and not tokenized_api for s in symbols])
     if broker is None:
         if mode == "live":
             client = kraken.KrakenClient(os.environ["KRAKEN_API_KEY"], os.environ["KRAKEN_API_SECRET"])
             pair_rules = {**kraken.pair_rules(False), **kraken.pair_rules(True)}
             broker = KrakenBroker(client, by_symbol, pair_rules=pair_rules, armed=armed,
-                                  max_order_eur=float(os.environ.get("HERMES_MAX_ORDER_EUR", "100")))
+                                  max_order_eur=float(os.environ.get("HERMES_MAX_ORDER_EUR", "100")),
+                                  tokenized_via_api=tokenized_api)
         else:
             broker = PaperBroker(state["cash"], state["units"])
 
@@ -204,7 +213,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     if already_ran or outage:
         orders = np.zeros(len(symbols))
     else:
-        orders = plan_orders(target, value, cash, tradable, classes, costs, rules)
+        orders = plan_orders(target, value, cash, tradable & ~by_hand, classes, costs, rules)
     order_map = {s: float(o) for s, o in zip(symbols, orders) if o != 0}
     fills = []
     if order_map:
@@ -214,6 +223,16 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
             fills = broker.execute(order_map, prices, by_symbol, costs, eurusd=eurusd)
             broker.refresh()
     units, cash, value, nav = account()
+
+    # What is left for the owner to place by hand, from the account as it now stands. It
+    # is a standing instruction, recomputed every run until the holdings match.
+    manual_orders = []
+    if by_hand.any() and not outage:
+        quoted = np.array([s not in stale and np.isfinite(prices.get(s, np.nan)) for s in symbols])
+        pending = plan_orders(target, value, cash, by_hand & quoted, classes, costs, rules)
+        manual_orders = [{"symbol": s, "name": NAMES.get(s, s), "class": panel.classes[s], "notional_eur": float(n),
+                          "pair": by_symbol[s].kraken_pair, "market_open": bool(market_open(by_symbol[s], now))}
+                         for s, n in zip(symbols, pending) if n != 0]
 
     # 5. persist ----------------------------------------------------------------------
     for key, symbol in (("btc", "BTC"), ("spx", "SPY")):
@@ -256,7 +275,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         "next_target_refresh_in_days": max(0, rules.rebalance_every - (0 if refreshed else (age or 0))),
         "positions": positions, "equity": equity.to_dict(orient="records"),
         "trades": done.tail(40).to_dict(orient="records") if len(done) else [],
-        "orders_today": [f.as_dict() for f in fills]}
+        "orders_today": [f.as_dict() for f in fills], "manual_orders": manual_orders}
     out = {"meta": {"generated_at": state["last_run"], "bar_date": bar, "version": __version__,
                     "data_errors": data_errors, "stale_markets": stale, "data_outage": bool(outage),
                     "price_source": "kraken"},
@@ -280,6 +299,9 @@ def main() -> None:
           f"invested {a['invested_pct']:.0%}, {len(a['orders_today'])} order(s)")
     for f in a["orders_today"]:
         print(f"   {f['status']:9s} {f['symbol']:6s} {f['notional_eur']:+9.2f} EUR at {f['price_eur']:.6g}  cost {f['cost_eur']:.3f}  {f['detail']}")
+    for o in a["manual_orders"]:
+        print(f"   BY HAND   {o['symbol']:6s} {o['notional_eur']:+9.2f} EUR  {'buy' if o['notional_eur'] > 0 else 'sell'} "
+              f"{o['pair'][:-3]} on kraken.com" + ("" if o["market_open"] else "  (its market is closed right now)"))
     if meta["data_errors"] or meta["stale_markets"]:
         print("   data problems:", meta["data_errors"], "stale:", meta["stale_markets"],
               "-> NO TRADING TODAY" if meta["data_outage"] else "-> those markets frozen for today")

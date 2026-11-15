@@ -37,17 +37,17 @@ Recibirás un mensaje diario con el valor de la cartera, las órdenes y las posi
 
 Hazlo solo después de ver el modo simulado funcionar unas semanas. Son tres pasos, y cada uno es un candado distinto.
 
-**Candado 1: las claves.** En la web de Kraken: icono de persona (arriba a la derecha) → **Settings → API → Create API key**, o directamente https://www.kraken.com/u/security/api. Marca estos cinco permisos y ninguno más:
+**Candado 1: las claves.** En Kraken Pro: https://pro.kraken.com/app/settings/api (icono de persona → **Configuración → Conexiones y API → Crear clave API**). La página antigua de kraken.com ya es de solo lectura. Marca estos cinco permisos y ninguno más:
 
-- Query Funds
-- Query Open Orders & Trades
-- Query Closed Orders & Trades
-- Create & Modify Orders
-- Cancel/Close Orders
+- Consulta (Query Funds)
+- Consultar órdenes y operaciones abiertas (Query Open Orders & Trades)
+- Consultar órdenes y operaciones cerradas (Query Closed Orders & Trades)
+- Crear y modificar órdenes (Create & Modify Orders)
+- Cancelar y cerrar órdenes (Cancel/Close Orders)
 
 El de órdenes cerradas hace falta porque cada orden se ejecuta o se cancela al instante, y el modelo lee el resultado cuando ya está cerrada.
 
-**Nunca marques "Withdraw Funds".** Con esa casilla sin marcar, nadie que robe la clave puede sacar dinero.
+**Nunca marques "Retirar" ni "Agregar direcciones de retiro".** Sin esas casillas, nadie que robe la clave puede sacar dinero.
 
 Deja las opciones adicionales como vienen. No restrinjas por dirección IP: GitHub ejecuta el modelo desde direcciones que cambian.
 
@@ -62,7 +62,24 @@ Dos límites adicionales que puedes ajustar:
 - `HERMES_MAX_ORDER_EUR` (por defecto 100): ninguna orden, conversiones de divisa incluidas, supera esa cantidad.
 - `HERMES_PROFILE`: `balanced` (por defecto) o `growth`.
 
-> El adaptador de Kraken se ha probado contra un exchange simulado y contra el ejemplo oficial de firma de Kraken, pero no contra una cuenta con fondos. Por eso existe el candado 2: úsalo.
+### Ensayo en seco, cuando quieras
+
+En la pestaña **Actions** hay un flujo manual, **Kraken connection check**. Lee el saldo y las órdenes, y envía a Kraken las órdenes que el modelo colocaría hoy con la marca de validación: Kraken las comprueba y las descarta. No coloca nada. Su cliente se niega, por código, a enviar cualquier otra cosa. Úsalo antes de armar el modelo y después de cualquier cambio.
+
+El 15 de noviembre de 2026 se ejecutó contra la cuenta real: claves, lectura de saldo, órdenes de criptomonedas y cambio de divisa, aceptadas; órdenes de acciones tokenizadas, rechazadas (ver el apartado siguiente). Todavía no se ha ejecutado ninguna orden real: lo validado es que Kraken las acepta, no cómo se ejecutan.
+
+### Cuentas europeas: las acciones tokenizadas se colocan a mano
+
+Kraken no admite órdenes de acciones tokenizadas (xStocks) por API ni en el libro de órdenes de Kraken Pro a clientes del Espacio Económico Europeo. Solo se pueden comprar y vender a mano en kraken.com, con euros, después de aprobar un cuestionario de idoneidad. Es una norma de Kraken, no un fallo de configuración.
+
+Por eso, en modo real y por defecto:
+
+- **Criptomonedas:** las opera el modelo solo, por API.
+- **Bolsa, oro y plata (SPYx, QQQx, GLDx, SLVx):** el modelo no envía esas órdenes ni cambia euros a dólares para ellas. Las calcula cada noche y las deja como **órdenes pendientes de colocar a mano**: aparecen en un aviso en el panel, en el registro de la ejecución (líneas `BY HAND`) y en el mensaje de Telegram. Cuando las colocas en kraken.com, la ejecución siguiente lee tus saldos y el aviso desaparece.
+
+Esta parte de la cartera se mueve poco (el modelo la mantiene siempre y solo la ajusta cuando un peso se desvía bastante), así que son cuatro compras al empezar y un ajuste de vez en cuando.
+
+Si tu cuenta no es europea y Kraken sí te admite esas órdenes por API, crea la variable `HERMES_TOKENIZED_API` con valor `yes` y el modelo las operará también.
 
 ### Cómo se envían las órdenes
 

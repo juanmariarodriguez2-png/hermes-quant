@@ -20,6 +20,9 @@ def daily_message(out: dict) -> str:
         lines.append(f"{verb} {f['symbol']}: {abs(f['notional_eur']):.2f} EUR ({f['status']})")
     if not a["orders_today"]:
         lines.append("Sin órdenes hoy.")
+    for o in a.get("manual_orders", []):
+        verb = "comprar" if o["notional_eur"] > 0 else "vender"
+        lines.append(f"A MANO en kraken.com: {verb} {abs(o['notional_eur']):.0f} EUR de {o['pair'][:-3]}")
     held = [f"{p['symbol']} {p['weight']:.0%}" for p in a["positions"] if p["weight"] > 0.005]
     lines.append("Posiciones: " + (", ".join(held) if held else "todo en liquidez"))
     return "\n".join(lines)

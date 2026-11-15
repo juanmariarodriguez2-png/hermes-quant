@@ -20,7 +20,7 @@ from ..data import kraken
 from ..data.kraken import KrakenClient
 from ..portfolio.execution import CostModel
 from ..universe import LIVE_INSTRUMENTS, Instrument
-from .brokers import FX_PAIR, KrakenBroker
+from .brokers import FX_PAIR, REFUSALS, KrakenBroker
 from .run_daily import LIVE, _now, market_open
 
 READ_ONLY = {"Balance", "OpenOrders", "ClosedOrders"}
@@ -77,7 +77,8 @@ def check(client, state: dict, now=None) -> list[Row]:
     rules = attempt("trading rules for every pair", lambda: {**kraken.pair_rules(False), **kraken.pair_rules(True)},
                     lambda r: f"{len(r)} pairs")
     eurusd = attempt("euro/dollar rate", lambda: kraken.ticker(FX_PAIR)["mid"], lambda v: f"{v:.4f}")
-    broker = attempt("read balances", lambda: KrakenBroker(client, by_symbol, pair_rules=rules or {}, armed=False))
+    broker = attempt("read balances", lambda: KrakenBroker(client, by_symbol, pair_rules=rules or {}, armed=False,
+                                                             tokenized_via_api=True))   # probe them on purpose
     if broker is None or rules is None or not eurusd:
         return rows
 
@@ -96,11 +97,21 @@ def check(client, state: dict, now=None) -> list[Row]:
         rows.append((f"validate buy {symbol}", False, "no quote for this pair"))
     orders = {s: n for s, n in orders.items() if s in prices}
     asked = {**orders, FX_PAIR: sum(n for s, n in orders.items() if by_symbol[s].quote == "USD")}
+    # Whether the daily run is set to send tokenized stocks itself. Where it is not (the
+    # default: Kraken refuses them from European accounts), a refusal here is the expected
+    # answer, and an acceptance is news worth reporting.
+    sends_tokenized = os.environ.get("HERMES_TOKENIZED_API", "no") == "yes"
     for f in broker.execute(orders, prices, by_symbol, CostModel(), eurusd=eurusd):
-        shut = f.symbol in by_symbol and not market_open(by_symbol[f.symbol], now)
+        inst = by_symbol.get(f.symbol)
+        shut = inst is not None and not market_open(inst, now)
         what = "validate euros to dollars" if f.symbol == FX_PAIR else f"validate buy {f.symbol}"
-        rows.append((f"{what} ({asked.get(f.symbol, 0.0):.0f} EUR)", f.status == "validated",
-                     f"{f.status}: {f.detail}" + ("  [this market is closed right now]" if shut else "")))
+        ok, detail = f.status == "validated", f"{f.status}: {f.detail}"
+        if inst is not None and inst.tokenized and not sends_tokenized:
+            if f.status == "rejected" and any(word in f.detail for word in REFUSALS):
+                ok, detail = True, f"refused by Kraken for this account ({f.detail}): listed for you to place by hand, as configured"
+            elif f.status == "validated":
+                detail += "  [Kraken accepts it: HERMES_TOKENIZED_API=yes would let the model trade it]"
+        rows.append((f"{what} ({asked.get(f.symbol, 0.0):.0f} EUR)", ok, detail + ("  [market closed right now]" if shut else "")))
     return rows
 
 

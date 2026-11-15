@@ -80,6 +80,7 @@ class PaperBroker:
 _LEGACY = {"BTC": ("XXBT", "XBT"), "ETH": ("XETH", "ETH"), "XRP": ("XXRP", "XRP"),
            "LTC": ("XLTC", "LTC"), "DOGE": ("XXDG", "XDG")}
 FX_PAIR = "EURUSD"
+MAX_FX_CHUNKS = 3           # a currency conversion larger than the order cap is split into at most this many orders
 
 
 class KrakenBroker:
@@ -242,7 +243,8 @@ class KrakenBroker:
             r = self._send(FX_PAIR, side, euros, eurusd, False)
             sign = 1.0 if side == "buy" else -1.0
             fills.append(Fill(FX_PAIR, sign * r["volume"], 1.0, sign * r["volume"],
-                              r["fee"] / eurusd if has_fx else 0.0, r["status"], why))
+                              r["fee"] / eurusd if has_fx else 0.0, r["status"],
+                              f"{why}: {r['detail']}" if r.get("detail") else why))   # keep the exchange's answer
 
         for symbol, notional in orders.items():                    # 1) sells free up cash
             if notional < 0:
@@ -256,11 +258,15 @@ class KrakenBroker:
         eur_buys = {s: n for s, n in orders.items() if n > 0 and instruments[s].quote != "USD"}
         if usd_buys and has_fx:                                    # 2) buy the dollars needed
             capped = sum(min(n, self.max_order_eur) for n in usd_buys.values())
-            shortfall_eur = capped * headroom * 1.005 - self.usd_cash() / eurusd
-            shortfall_eur = min(shortfall_eur, self.cash() * 0.98) if self.armed else shortfall_eur
-            if shortfall_eur > 5.0:
+            for _ in range(MAX_FX_CHUNKS):                         # in pieces: each one obeys the order cap
+                shortfall_eur = capped * headroom * 1.005 - self.usd_cash() / eurusd
+                shortfall_eur = min(shortfall_eur, self.cash() * 0.98) if self.armed else shortfall_eur
+                if shortfall_eur <= 5.0:
+                    break
                 convert("sell", shortfall_eur, "euros to dollars for stock purchases")
                 settle()
+                if not self.armed or fills[-1].units == 0:         # a dry run has no balance to re-read;
+                    break                                          # a conversion that did not fill is not retried
 
         if self.armed:                                             # 3) buys, sized to real cash
             usd_available_eur = self.usd_cash() / eurusd / headroom if has_fx else 0.0

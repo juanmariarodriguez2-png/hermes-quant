@@ -4,7 +4,7 @@ Todo lo necesario para dejar Hermes Quant funcionando solo, cada noche, sin depe
 
 ## 1. Lo que hay y lo que hace
 
-Cada noche, poco después de las 00:00 UTC, GitHub ejecuta el modelo:
+Cada noche, hacia las 01:23 UTC (las 2:23 en España en invierno, las 3:23 en verano), GitHub ejecuta el modelo:
 
 1. Descarga las velas del día de Kraken (12 criptomonedas, 8 fondos tokenizados y el euro/dólar).
 2. Recalcula volatilidades, tendencias, régimen de mercado y correlaciones.

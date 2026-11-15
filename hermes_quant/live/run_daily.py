@@ -42,6 +42,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -61,6 +62,7 @@ LIVE = ROOT / "data" / "live"
 SITE = ROOT / "site"
 MAX_DRAWDOWN_HALT = 0.25        # circuit breaker: stop and go to cash after a 25% fall from the peak
 OUTAGE_SHARE = 1.0 / 3.0        # this share of markets without data = do not trade today
+NEW_YORK = ZoneInfo("America/New_York")
 
 
 def _now() -> datetime:
@@ -76,8 +78,19 @@ def load_state(path: Path, capital: float, profile: str, mode: str) -> dict:
 
 
 def market_open(inst: Instrument, now: datetime) -> bool:
-    """Crypto never closes; tokenized stocks trade 24 hours, Monday to Friday (UTC)."""
-    return (not inst.tokenized) or now.weekday() < 5
+    """Crypto never closes. Kraken's tokenized stocks trade around the clock from
+    Sunday 8 pm to Friday 8 pm, New York time (01:00 UTC in winter, 00:00 in summer)."""
+    if not inst.tokenized:
+        return True
+    ny = now.astimezone(NEW_YORK)
+    day, hour = ny.weekday(), ny.hour + ny.minute / 60.0        # Monday = 0 ... Sunday = 6
+    if day == 6:
+        return hour >= 20.0
+    if day == 5:
+        return False
+    if day == 4:
+        return hour < 20.0
+    return True
 
 
 def current_prices(instruments: list[Instrument], last_close: pd.Series, fx_close: float,

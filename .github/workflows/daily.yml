@@ -1,10 +1,11 @@
 name: Hermes daily run
 
-# Runs every night shortly after the daily candles close (00:00 UTC). GitHub's
-# scheduler can be several minutes late; the model does not care.
+# Runs every night after the daily candles close (00:00 UTC) and after Kraken's
+# tokenized stocks reopen for the week (Sunday 8 pm New York = 01:00 UTC in winter).
+# GitHub's scheduler can be several minutes late; the model does not care.
 on:
   schedule:
-    - cron: "23 0 * * *"
+    - cron: "23 1 * * *"
   workflow_dispatch: {}
 
 # Nothing by default: each job below asks for exactly what it needs. These explicit

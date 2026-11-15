@@ -164,8 +164,8 @@ def sandbox(tmp_path):
     return tmp_path
 
 
-MONDAY = datetime(2026, 11, 16, 0, 25, tzinfo=timezone.utc)
-SATURDAY = datetime(2026, 11, 14, 0, 25, tzinfo=timezone.utc)
+MONDAY = datetime(2026, 11, 16, 1, 25, tzinfo=timezone.utc)
+SATURDAY = datetime(2026, 11, 14, 1, 25, tzinfo=timezone.utc)
 
 
 def test_daily_run_is_idempotent_and_respects_the_weekend(sandbox):
@@ -201,7 +201,7 @@ def test_a_missing_candle_freezes_that_market_instead_of_selling_it(sandbox):
     nxt = fx.iloc[[-1]].copy()
     nxt.index = [fx.index[-1] + pd.Timedelta(days=3)]
     store.save("EURUSD", pd.concat([fx, nxt]))
-    later = run_daily.run(now=datetime(2026, 11, 17, 0, 25, tzinfo=timezone.utc), **kw)
+    later = run_daily.run(now=datetime(2026, 11, 17, 1, 25, tzinfo=timezone.utc), **kw)
     assert victim in later["meta"]["stale_markets"]
     assert victim not in [o["symbol"] for o in later["account"]["orders_today"]]
     still = {p["symbol"]: p for p in later["account"]["positions"]}[victim]
@@ -265,3 +265,107 @@ def test_live_mode_end_to_end_against_the_simulated_exchange(sandbox, monkeypatc
     (sandbox / "live" / "state.json").write_text(json.dumps(state))
     again = run_daily.run(now=MONDAY, broker=armed, **kw)
     assert len(ex.sent) == sent and again["account"]["orders_today"] == []   # the exchange is the truth
+
+
+# ----------------------------------------------------------------------------- trading hours
+
+
+def test_tokenized_stocks_follow_new_york_hours_and_crypto_never_closes():
+    spy, btc = LIVE_BY_SYMBOL["SPY"], LIVE_BY_SYMBOL["BTC"]
+    utc = lambda *a: datetime(*a, tzinfo=timezone.utc)               # noqa: E731
+    assert not run_daily.market_open(spy, utc(2026, 11, 16, 0, 25))  # Sunday 7:25 pm in New York: still shut
+    assert run_daily.market_open(spy, utc(2026, 11, 16, 1, 25))      # Sunday 8:25 pm: the week has opened
+    assert run_daily.market_open(spy, utc(2026, 11, 18, 14, 0))      # midweek
+    assert run_daily.market_open(spy, utc(2026, 11, 14, 0, 25))      # Friday 7:25 pm: last half hour
+    assert not run_daily.market_open(spy, utc(2026, 11, 14, 1, 25))  # Friday 8:25 pm: closed for the weekend
+    assert not run_daily.market_open(spy, utc(2026, 11, 15, 12, 0))  # Sunday noon
+    assert run_daily.market_open(spy, utc(2026, 7, 13, 0, 25))       # summer time: Sunday 8:25 pm is 00:25 UTC
+    assert all(run_daily.market_open(btc, utc(2026, 11, d, 12, 0)) for d in (14, 15, 16))
+
+
+# ----------------------------------------------------------------------------- dry run
+
+
+def test_dry_run_client_can_only_read_and_validate(monkeypatch):
+    from hermes_quant.live.check_kraken import DryRunClient
+
+    reached = []
+    monkeypatch.setattr(kraken.KrakenClient, "_private", lambda self, endpoint, data=None: reached.append(endpoint) or {})
+    client = DryRunClient("key", "c2VjcmV0")
+    client.balances()
+    client.open_orders()
+    client.add_order("XBTEUR", "buy", "0.001", price="50000.0")                       # validate-only by default
+    with pytest.raises(RuntimeError):
+        client.add_order("XBTEUR", "buy", "0.001", price="50000.0", validate=False)   # a real order
+    with pytest.raises(RuntimeError):
+        client.cancel_order("T1")
+    with pytest.raises(RuntimeError):
+        client._private("Withdraw", {"asset": "ZEUR"})
+    assert reached == ["Balance", "OpenOrders", "AddOrder"]                           # nothing else got through
+
+
+def test_dry_run_pushes_the_target_through_the_broker_without_trading(monkeypatch):
+    from hermes_quant.live import check_kraken
+
+    class Exchange(FakeExchange):
+        def open_orders(self):
+            return {}
+
+        def _private(self, endpoint, data=None):
+            assert endpoint == "ClosedOrders"
+            return {"closed": {}}
+
+    rules = {**RULES, "GLDxUSD": RULES["SPYxUSD"]}
+    quotes = {"XBTEUR": 60000.0, "SPYxUSD": 748.0, "GLDxUSD": 430.0, "EURUSD": EURUSD}
+    monkeypatch.setattr(kraken, "pair_rules", lambda tokenized=False: rules)
+    monkeypatch.setattr(kraken, "ticker", lambda pair, tokenized=False: {"mid": quotes[pair]})
+    ex = Exchange({"ZEUR": 233.47})
+    rows = check_kraken.check(ex, {"target": {"SPY": 0.16, "GLD": 0.28}}, now=MONDAY)
+    assert all(ok for _, ok, _ in rows), rows
+    names = " | ".join(name for name, _, _ in rows)
+    for wanted in ("read balances", "read closed orders", "account value", "validate euros to dollars",
+                   "validate buy SPY", "validate buy GLD", "validate buy BTC"):
+        assert wanted in names
+    assert ex.sent and all(o["validate"] for o in ex.sent)            # every order was a dry run
+    assert ex.bal == {"ZEUR": 233.47}                                 # and the account is untouched
+
+
+def test_dry_run_reports_a_rejection_with_the_exchanges_own_words(monkeypatch):
+    from hermes_quant.live import check_kraken
+
+    class Exchange(FakeExchange):
+        def open_orders(self):
+            return {}
+
+        def _private(self, endpoint, data=None):
+            return {"closed": {}}
+
+        def add_order(self, pair, side, volume, *, price, tokenized=False, validate=True):
+            if tokenized:
+                raise kraken.KrakenError("AddOrder: EGeneral:Permission denied")
+            return super().add_order(pair, side, volume, price=price, tokenized=tokenized, validate=validate)
+
+    monkeypatch.setattr(kraken, "pair_rules", lambda tokenized=False: RULES)
+    monkeypatch.setattr(kraken, "ticker", lambda pair, tokenized=False: {"mid": {"XBTEUR": 60000.0, "SPYxUSD": 748.0, "EURUSD": EURUSD}[pair]})
+    rows = check_kraken.check(Exchange({"ZEUR": 233.47}), {"target": {"SPY": 0.16}}, now=MONDAY)
+    failed = [(name, detail) for name, ok, detail in rows if not ok]
+    assert len(failed) == 1 and "SPY" in failed[0][0] and "Permission denied" in failed[0][1]
+
+
+def test_a_conversion_larger_than_the_order_cap_is_split_so_the_purchases_are_fully_funded():
+    ex = FakeExchange({"ZEUR": 233.47}, fee=0.002)
+    b = broker(ex, armed=True, max_order_eur=100.0)
+    fills = b.execute({"SPY": 70.0, "QQQ": 58.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
+    conversions = [o for o in ex.sent if o["pair"] == "EURUSD"]
+    assert len(conversions) == 2 and all(o["volume"] <= 100.0 + 1e-9 for o in conversions)    # 100 EUR, then the rest
+    bought = {f.symbol: f.notional_eur for f in fills if f.symbol in ("SPY", "QQQ")}
+    assert bought["SPY"] == pytest.approx(70.0, rel=0.02) and bought["QQQ"] == pytest.approx(58.0, rel=0.02)
+    assert ex.bal["ZEUR"] > 0 and ex.bal.get("ZUSD", 0.0) > -1e-6                              # nothing overdrawn
+
+
+def test_a_conversion_that_does_not_fill_is_not_retried():
+    ex = FakeExchange({"ZEUR": 233.47}, fill_ratio=0.0)
+    b = broker(ex, armed=True, max_order_eur=100.0)
+    b.execute({"SPY": 70.0, "QQQ": 58.0}, PRICE_EUR, LIVE_BY_SYMBOL, CostModel(), eurusd=EURUSD)
+    assert len([o for o in ex.sent if o["pair"] == "EURUSD"]) == 1
+    assert not [o for o in ex.sent if o["pair"] != "EURUSD"]                                   # no dollars, no purchases

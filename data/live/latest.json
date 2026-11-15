@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-11-15T17:04:18Z",
+    "generated_at": "2026-11-15T17:15:39Z",
     "bar_date": "2026-11-14",
     "version": "2.0.0",
     "data_errors": {},
@@ -9,16 +9,16 @@
     "price_source": "kraken"
   },
   "account": {
-    "mode": "paper",
-    "armed": false,
+    "mode": "live",
+    "armed": true,
     "profile": "balanced",
     "inception": "2026-11-14",
     "initial_capital": 233.47,
-    "nav": 233.47,
-    "cash": 233.47,
-    "invested_pct": 0.0,
-    "return_since_inception": 0.0,
-    "peak_nav": 233.47,
+    "nav": 233.4732777083395,
+    "cash": 233.4709,
+    "invested_pct": 1.0184070583316569e-05,
+    "return_since_inception": 1.4039098554352591e-05,
+    "peak_nav": 233.4732777083395,
     "drawdown": 0.0,
     "halted": false,
     "target_date": "2026-11-13",
@@ -67,7 +67,40 @@
       }
     ],
     "orders_today": [],
-    "manual_orders": []
+    "manual_orders": [
+      {
+        "symbol": "SPY",
+        "name": "S&P 500",
+        "class": "equity",
+        "notional_eur": 32.54808471855521,
+        "pair": "SPYxUSD",
+        "market_open": false
+      },
+      {
+        "symbol": "QQQ",
+        "name": "Nasdaq 100",
+        "class": "equity",
+        "notional_eur": 13.847248958377994,
+        "pair": "QQQxUSD",
+        "market_open": false
+      },
+      {
+        "symbol": "GLD",
+        "name": "Gold",
+        "class": "real",
+        "notional_eur": 56.51386956285528,
+        "pair": "GLDxUSD",
+        "market_open": false
+      },
+      {
+        "symbol": "SLV",
+        "name": "Silver",
+        "class": "real",
+        "notional_eur": 7.880941955198858,
+        "pair": "SLVxUSD",
+        "market_open": false
+      }
+    ]
   },
   "targets": {
     "SPY": 0.15932363425928617,

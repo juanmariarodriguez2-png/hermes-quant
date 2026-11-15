@@ -37,16 +37,21 @@ Recibirás un mensaje diario con el valor de la cartera, las órdenes y las posi
 
 Hazlo solo después de ver el modo simulado funcionar unas semanas. Son tres pasos, y cada uno es un candado distinto.
 
-**Candado 1: las claves.** En Kraken: **Settings → API → Create key**, con estos permisos y ninguno más:
+**Candado 1: las claves.** En la web de Kraken: icono de persona (arriba a la derecha) → **Settings → API → Create API key**, o directamente https://www.kraken.com/u/security/api. Marca estos cinco permisos y ninguno más:
 
-- Query funds
-- Query open orders & trades
-- Create & modify orders
-- Cancel & close orders
+- Query Funds
+- Query Open Orders & Trades
+- Query Closed Orders & Trades
+- Create & Modify Orders
+- Cancel/Close Orders
 
-**Nunca marques "Withdraw funds".** Con esa casilla sin marcar, nadie que robe la clave puede sacar dinero.
+El de órdenes cerradas hace falta porque cada orden se ejecuta o se cancela al instante, y el modelo lee el resultado cuando ya está cerrada.
 
-En GitHub crea dos secretos: `KRAKEN_API_KEY` y `KRAKEN_API_SECRET`.
+**Nunca marques "Withdraw Funds".** Con esa casilla sin marcar, nadie que robe la clave puede sacar dinero.
+
+Deja las opciones adicionales como vienen. No restrinjas por dirección IP: GitHub ejecuta el modelo desde direcciones que cambian.
+
+Kraken enseña la clave privada una sola vez. Cópiala directamente a GitHub, en **Settings → Secrets and variables → Actions → New repository secret**, como dos secretos: `KRAKEN_API_KEY` (la "API key") y `KRAKEN_API_SECRET` (la "Private key"). No la pegues en ningún otro sitio.
 
 **Candado 2: el modo.** En **Settings → Secrets and variables → Actions → Variables** crea `HERMES_MODE` con valor `live`. A partir de aquí el modelo lee tu saldo real y **envía cada orden a Kraken solo para validarla**: Kraken comprueba que es correcta y la descarta. No se mueve ni un céntimo. Revisa el registro de la ejecución (pestaña Actions) durante varios días: debe mostrar órdenes con estado `validated` y sin errores.
 

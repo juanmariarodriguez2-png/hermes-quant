@@ -1,7 +1,7 @@
 {
   "meta": {
-    "generated_at": "2026-11-14T20:30:04Z",
-    "bar_date": "2026-11-13",
+    "generated_at": "2026-11-15T16:09:31Z",
+    "bar_date": "2026-11-14",
     "version": "2.0.0",
     "data_errors": {},
     "stale_markets": [],
@@ -23,14 +23,14 @@
     "halted": false,
     "target_date": "2026-11-13",
     "target_refreshed_today": false,
-    "next_target_refresh_in_days": 7,
+    "next_target_refresh_in_days": 6,
     "positions": [
       {
         "symbol": "SPY",
         "name": "S&P 500",
         "class": "equity",
         "units": 0.0,
-        "price": 681.2741768519696,
+        "price": 682.2530190600902,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.15932363425928617
@@ -40,7 +40,7 @@
         "name": "Nasdaq 100",
         "class": "equity",
         "units": 0.0,
-        "price": 612.4439278644462,
+        "price": 613.3238760366653,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.06930978094921987
@@ -50,7 +50,7 @@
         "name": "Gold",
         "class": "real",
         "units": 0.0,
-        "price": 322.6849245409804,
+        "price": 323.14855230612545,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.27663671035230863
@@ -60,7 +60,7 @@
         "name": "Silver",
         "class": "real",
         "units": 0.0,
-        "price": 39.56377240615296,
+        "price": 39.62061690673651,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.04375522043702116

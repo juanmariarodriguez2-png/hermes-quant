@@ -7,10 +7,9 @@ on:
     - cron: "23 0 * * *"
   workflow_dispatch: {}
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+# Nothing by default: each job below asks for exactly what it needs. These explicit
+# grants are enough on their own; no repository setting has to be changed for them.
+permissions: {}
 
 concurrency:
   group: hermes-daily
@@ -20,10 +19,15 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write   # save the day's state back to the repository
+      pages: read       # find out whether the dashboard can be published
+    outputs:
+      publish: ${{ steps.pages.outputs.publish }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
@@ -38,6 +42,7 @@ jobs:
           # Real orders are only sent when this repository variable is exactly "yes".
           HERMES_LIVE_ARMED: ${{ vars.HERMES_LIVE_ARMED || 'no' }}
           HERMES_MAX_ORDER_EUR: ${{ vars.HERMES_MAX_ORDER_EUR || '100' }}
+          HERMES_REBASE: ${{ vars.HERMES_REBASE || 'no' }}
           KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
           KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -52,15 +57,48 @@ jobs:
           git diff --cached --quiet || git commit -m "daily run $(date -u +%F)"
           git push
 
-      # Publishing the dashboard needs GitHub Pages (free on public repositories). On a
-      # private repository these steps fail harmlessly; trading state is already saved.
-      - uses: actions/configure-pages@v5
-        continue-on-error: true
-        with:
-          enablement: true
+      # The dashboard is served by GitHub Pages (free on public repositories) once it is
+      # switched on: Settings > Pages > Source: GitHub Actions. Until then it is skipped
+      # with a notice; trading state is already saved by the step above.
+      - name: Can the dashboard be published?
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if source=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type 2>&1); then
+            if [ "$source" = "workflow" ]; then
+              publish=true
+            else
+              publish=false
+              why="GitHub Pages deploys from a branch; switch its source to GitHub Actions"
+            fi
+          elif echo "$source" | grep -q "HTTP 404"; then
+            publish=false
+            why="GitHub Pages is not switched on (Settings > Pages > Source: GitHub Actions)"
+          else
+            publish=true    # could not tell: try, and let a real problem show
+          fi
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+          [ "$publish" = true ] || echo "::notice::Dashboard not published: $why. Trading state was saved."
+
       - uses: actions/upload-pages-artifact@v3
-        continue-on-error: true
+        if: steps.pages.outputs.publish == 'true'
         with:
           path: site
-      - uses: actions/deploy-pages@v4
-        continue-on-error: true
+
+  # Publishing follows GitHub's own pattern: a separate job in the github-pages
+  # environment, which is what the Pages deployment API checks.
+  publish:
+    needs: run
+    if: needs.run.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write      # create the deployment
+      id-token: write   # prove it comes from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

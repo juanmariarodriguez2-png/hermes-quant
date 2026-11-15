@@ -13,16 +13,17 @@ Cada noche, poco después de las 00:00 UTC, GitHub ejecuta el modelo:
 
 No hay servidor, ni Docker, ni coste de IA. Si el portátil está apagado, da igual.
 
-## 2. Publicarlo (una sola vez, 5 minutos)
+## 2. Publicarlo (una sola vez, 3 minutos)
 
 1. Sube la carpeta a un repositorio de GitHub llamado `hermes-quant`.
-2. En el repositorio: **Settings → Actions → General → Workflow permissions → Read and write permissions**. Guarda.
-3. **Settings → Pages → Build and deployment → Source: GitHub Actions.**
-4. **Actions → Hermes daily run → Run workflow** para lanzar la primera ejecución a mano.
+2. En el repositorio: **Settings → Pages → Build and deployment → Source: GitHub Actions.**
+3. **Actions → Hermes daily run → Run workflow** para lanzar la primera ejecución a mano.
 
 A los dos minutos el panel estará en `https://TU_USUARIO.github.io/hermes-quant/`.
 
-GitHub Pages es gratis en repositorios públicos. Si el repositorio es privado, el modelo funciona igual, pero el panel no se publica hasta que lo hagas público (o hasta que conectes la carpeta `site/` a Netlify).
+No hace falta tocar los permisos de Actions: el flujo pide por sí mismo los que necesita.
+
+GitHub Pages es gratis en repositorios públicos. Si el repositorio es privado, o mientras no actives el paso 2, el modelo funciona igual y guarda su estado cada noche; simplemente no publica el panel, y lo dice en el registro de la ejecución.
 
 ## 3. Avisos por Telegram (opcional)
 

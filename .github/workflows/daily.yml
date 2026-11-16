@@ -2,10 +2,15 @@ name: Hermes daily run
 
 # Runs every night after the daily candles close (00:00 UTC) and after Kraken's
 # tokenized stocks reopen for the week (Sunday 8 pm New York = 01:00 UTC in winter).
-# GitHub's scheduler can be several minutes late; the model does not care.
+#
+# Three slots, not one: GitHub's scheduler is best-effort and can skip a slot without a
+# word (it skipped the very first night, 16 Nov 2026). The run is idempotent per daily
+# candle, so whichever slot fires first does the day's work and the others trade nothing.
 on:
   schedule:
     - cron: "23 1 * * *"
+    - cron: "53 2 * * *"
+    - cron: "23 4 * * *"
   workflow_dispatch: {}
 
 # Nothing by default: each job below asks for exactly what it needs. These explicit

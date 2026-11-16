@@ -312,11 +312,12 @@ es: {
  "ev.lede": "Todas las decisiones de diseño se tomaron con datos hasta el 31/12/2021. Los años posteriores se guardaron bajo llave y se evaluaron una sola vez, con el modelo ya congelado. Comisiones reales de Kraken, un día de retraso en la ejecución y universo sin sesgo de supervivencia.",
  "ev.curve": "100 € invertidos en enero de 2017", "ev.curveSub": "La zona sombreada es el examen a ciegas. Escala logarítmica: la misma distancia vertical es el mismo porcentaje.",
  "ev.log": "Escala lineal", "ev.lin": "Escala logarítmica", "ev.hold": "examen a ciegas",
- "s.hermes": "Hermes Quant", "s.bitcoin": "Bitcoin", "s.sp500": "S&P 500 (en €)", "s.mix": "60/40 bolsa-oro", "s.growth": "Hermes · perfil crecimiento",
+ "s.hermes": "Hermes Quant", "s.bitcoin": "Bitcoin", "s.sp500": "S&P 500 (en €)", "s.mix": "60/40 bolsa-oro", "s.growth": "Hermes · perfil crecimiento", "s.real": "Hermes · con el coste real de esta cuenta",
  "ev.table": "Resultados", "ev.tableSub": "Rentabilidad anual, riesgo y peor caída. Las referencias no pagan comisiones; Hermes sí.",
  "col.cagr": "Rentab. anual", "col.sharpe": "Sharpe", "col.dd": "Peor caída", "col.volS": "Volatilidad",
  "ev.design": "Diseño · 2007–2021", "ev.holdout": "Examen a ciegas · 2022–{y}",
  "ev.metricsNote": "Sharpe frente a liquidez al 0 % (lo que paga el exchange); entre paréntesis, frente al tipo sin riesgo del BCE.",
+ "ev.realNote": " «Coste real de esta cuenta»: en Europa, Kraken obliga a comprar bolsa, oro y plata a mano, y el precio lleva un margen del {c} por operación (medido el {d}). La primera fila usa las comisiones del libro de órdenes, que una cuenta europea no puede usar para esos activos.",
  "ev.conf": "¿Suerte o método?", "ev.confSub": "Lo que dicen las pruebas estadísticas, sin maquillar.",
  "conf.ci": "Sharpe del examen a ciegas, intervalo al 95 %", "conf.ciD": "bootstrap por bloques, {n} remuestreos",
  "conf.neg": "Remuestreos con Sharpe ≤ 0", "conf.negD": "cuanto más bajo, menos probable que sea azar",
@@ -415,11 +416,12 @@ en: {
  "ev.lede": "Every design decision used data up to 31 Dec 2021. The years after were locked away and evaluated once, with the model already frozen. Real Kraken fees, a one-day execution delay, and a survivorship-free universe.",
  "ev.curve": "€100 invested in January 2017", "ev.curveSub": "The shaded zone is the blind exam. Log scale: equal vertical distance means equal percentage.",
  "ev.log": "Linear scale", "ev.lin": "Log scale", "ev.hold": "blind exam",
- "s.hermes": "Hermes Quant", "s.bitcoin": "Bitcoin", "s.sp500": "S&P 500 (in €)", "s.mix": "60/40 stocks-gold", "s.growth": "Hermes · growth profile",
+ "s.hermes": "Hermes Quant", "s.bitcoin": "Bitcoin", "s.sp500": "S&P 500 (in €)", "s.mix": "60/40 stocks-gold", "s.growth": "Hermes · growth profile", "s.real": "Hermes · at this account's real cost",
  "ev.table": "Results", "ev.tableSub": "Annual return, risk and worst loss. Benchmarks pay no fees; Hermes does.",
  "col.cagr": "Annual return", "col.sharpe": "Sharpe", "col.dd": "Worst drawdown", "col.volS": "Volatility",
  "ev.design": "Design · 2007–2021", "ev.holdout": "Blind exam · 2022–{y}",
  "ev.metricsNote": "Sharpe versus cash at 0% (what the exchange pays); in brackets, versus the ECB risk-free rate.",
+ "ev.realNote": " “This account's real cost”: in Europe, Kraken makes you buy the equity, gold and silver funds by hand, at a price that carries a {c} margin per trade (measured on {d}). The first row uses the order-book fees, which a European account cannot use for those assets.",
  "ev.conf": "Luck or method?", "ev.confSub": "What the statistical tests say, unvarnished.",
  "conf.ci": "Blind-exam Sharpe, 95% interval", "conf.ciD": "block bootstrap, {n} resamples",
  "conf.neg": "Resamples with Sharpe ≤ 0", "conf.negD": "the lower, the less likely it is chance",
@@ -859,13 +861,13 @@ function renderResearch() {
   const P = RES.profiles, B = RES.benchmarks, mt = $("#metrics");
   const cell = (st, k, d = 1) => h("td", { class: "r num", text: st ? pct(st[k], d) : "—" });
   const sh = (st) => h("td", { class: "r num", text: st ? `${num(st.sharpe, 2)} (${num(st.sharpe_excess, 2)})` : "—" });
-  const X = RES.context || {};
+  const X = RES.context || {}, real = RES.execution && RES.execution.cases.convert;        // the frozen model at what this venue really charges
   const block = (title, key, rows, plain) => [h("tr", {}, h("th", { colspan: 5, text: title, style: "padding-top:14px" })), ...rows.filter(r => r[1] && r[1][key]).map((r, i) => h("tr", { class: i === 0 && !plain ? "lead" : null }, h("td", {}, r[2] ? h("span", { class: "dot", style: `background:${css(r[2])}` }) : null, r[0]), cell(r[1][key], "cagr"), cell(r[1][key], "vol"), sh(r[1][key]), cell(r[1][key], "max_drawdown")))];
   mt.replaceChildren(h("thead", {}, h("tr", {}, h("th", {}), h("th", { class: "r", text: T("col.cagr") }), h("th", { class: "r", text: T("col.volS") }), h("th", { class: "r", text: T("col.sharpe") }), h("th", { class: "r", text: T("col.dd") }))),
-    h("tbody", {}, ...block(T("ev.holdout", { y: end.slice(0, 4) }), "holdout", [[T("s.hermes"), P.balanced, "--accent"], [T("s.growth"), P.growth, null], [T("s.sp500"), B["S&P 500 buy & hold (EUR)"], "--c-equity"], [T("s.mix"), B["60% S&P 500 / 40% gold"], null], [T("s.bitcoin"), B["Bitcoin buy & hold"], "--c-crypto"]]),
-      ...block(T("ev.design"), "design", [[T("s.hermes"), P.balanced, "--accent"], [T("s.growth"), P.growth, null]]),
+    h("tbody", {}, ...block(T("ev.holdout", { y: end.slice(0, 4) }), "holdout", [[T("s.hermes"), P.balanced, "--accent"], [T("s.real"), real, null], [T("s.growth"), P.growth, null], [T("s.sp500"), B["S&P 500 buy & hold (EUR)"], "--c-equity"], [T("s.mix"), B["60% S&P 500 / 40% gold"], null], [T("s.bitcoin"), B["Bitcoin buy & hold"], "--c-crypto"]]),
+      ...block(T("ev.design"), "design", [[T("s.hermes"), P.balanced, "--accent"], [T("s.real"), real, null], [T("s.growth"), P.growth, null]]),
       ...block(T("ev.context"), "holdout", [[T("ctx.rule"), X["what the mechanical rule picked (crypto always held)"], null], [T("ctx.trend"), X["trend filter on everything"], null], [T("ctx.noreg"), X["no regime overlay"], null], [T("ctx.wide"), X["same model, if the four illiquid funds could be traded"], null]].map(r => [r[0], r[1], r[2]]), true)));
-  $("#metricsNote").textContent = T("ev.metricsNote");
+  $("#metricsNote").textContent = T("ev.metricsNote") + (real ? T("ev.realNote", { c: pct(RES.execution.observed.all_in_cost, 2), d: dateFmt(RES.execution.observed.date) }) : "");
 
   /* confidence */
   const inf = RES.inference, hb = inf.holdout_bootstrap, mm = RES.market_model.holdout, cf = $("#conf");

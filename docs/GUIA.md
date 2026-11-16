@@ -86,6 +86,10 @@ Por eso, en modo real y por defecto:
 
 Esta parte de la cartera se mueve poco (el modelo la mantiene siempre y solo la ajusta cuando un peso se desvía bastante), así que son cuatro compras al empezar y un ajuste de vez en cuando.
 
+**Cómo se compran:** en Kraken Pro, botón **Convertir** (arriba a la derecha): de EUR al activo que acaba en «x» (GLDx, SPYx, QQQx, SLVx), el importe del aviso, **Revisar** y confirmar. El formulario de órdenes normal no sirve para estos activos en una cuenta europea.
+
+**Cuánto cuesta:** Convertir muestra «comisión 0», pero el precio lleva un margen. Medido el 16 de noviembre de 2026 con una compra real de GLDx: 1,07 % sobre el precio de mercado en ese instante. Las pruebas del modelo suponían un 0,38 % (comisiones del libro de órdenes). Rehecho el examen a ciegas con el coste real, el resultado baja de 11,9 % a 10,9 % anual, con la misma caída máxima. Está en `research/08_execution_costs.py` y en la tabla de resultados del panel.
+
 Si tu cuenta no es europea y Kraken sí te admite esas órdenes por API, crea la variable `HERMES_TOKENIZED_API` con valor `yes` y el modelo las operará también.
 
 ### Cómo se envían las órdenes
@@ -114,7 +118,7 @@ Dos bots sobre la misma cuenta se pisarían.
 
 Sin adornos:
 
-- **Rentabilidad razonable de esperar: en torno al 10 % anual**, con años negativos. En el examen a ciegas fueron +11,9 % anual; el peor año, −5,5 %.
+- **Rentabilidad razonable de esperar: en torno al 10 % anual**, con años negativos. En el examen a ciegas fueron +11,9 % anual con las comisiones del libro de órdenes y +10,9 % con lo que de verdad cuesta comprar los fondos a mano en una cuenta europea; el peor año, −5,5 %.
 - **Con 233 € eso son unos 25 € al año.** El modelo no convierte poco dinero en mucho. Lo que hace es ganar de forma defendible y escalar: la misma lógica funciona igual con 2.000 o con 20.000 €.
 - **Habrá rachas malas.** La peor caída histórica fue del −17 %. Es normal estar meses por debajo del máximo.
 - **No bate a todo.** Entre 2022 y 2026 una simple mezcla de bolsa y oro ganó más. La ventaja de Hermes fue caer menos.

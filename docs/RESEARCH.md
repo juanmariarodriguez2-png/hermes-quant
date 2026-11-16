@@ -159,6 +159,24 @@ Year by year: 2022 −5.5%, 2023 +11.2%, 2024 +34.4%, 2025 +17.9%, 2026 to mid-N
 
 With Europe, small caps, emerging markets and energy included (tokens that exist on Kraken but do not trade), the design-sample Sharpe falls to 0.72 and the hold-out is 0.99. The four funds that are liquid today are the ones that did well in 2007–2021. That is a selection effect the design-sample figure benefits from and the hold-out figure does not.
 
+## Step 6. What the venue really charges
+
+The backtest prices tokenized funds as Kraken's order book would: 0.08% fee, 0.10% slippage and 0.20% to turn euros into dollars, 0.38% a side. That turned out not to be available to the account this runs on. Kraken does not let clients in the European Economic Area trade tokenized stocks through the order book or the API; they buy by hand with "Convert", which shows a fee of zero and carries its margin in the price.
+
+Measured on 16 November 2026 with a real quote: 57 EUR for 0.1754081 GLDx, 324.96 EUR a unit, against a market mid of 321.51 EUR at the same moment. That is **1.07% all in, per side**: nearly three times the assumption.
+
+`research/08_execution_costs.py` re-costs the frozen model with that figure. Nothing is re-fitted or re-selected; the order-book row reproduces the published hold-out to the last digit.
+
+| Funds cost per side | Hold-out return | Sharpe (over cash) | Worst drawdown | Costs per year |
+|---|---:|---:|---:|---:|
+| 0.38% (order book, as designed) | 11.9% | 0.96 (0.78) | −11.3% | 0.72% |
+| 1.07% (Convert, as measured) | 10.9% | 0.89 (0.70) | −11.5% | 1.65% |
+| 1.50% (Convert, pessimistic) | 10.2% | 0.84 (0.65) | −11.5% | 2.23% |
+
+One measurement of one asset at one moment is a thin basis; the silver fund's own order book was 1% wide that evening, so its Convert price is probably worse. The honest figure for a European account is the second row, and the dashboard shows it beside the headline.
+
+The lesson is the one the old bot taught, again: the result is decided by what a trade costs, and the cost that matters is the one actually charged, not the published schedule.
+
 ## Step 7. Derivatives (exploratory)
 
 Funding history starts in 2020, too short to split. Parameters fixed a priori, one sample, indicative only.

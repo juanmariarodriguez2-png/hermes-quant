@@ -97,6 +97,7 @@ def main() -> None:
         "trials": json.loads((RESULTS / "design_trials.json").read_text())["n_trials"],
         "selected": design.get("selected"),
         "derivatives": json.loads((RESULTS / "derivatives.json").read_text()) if (RESULTS / "derivatives.json").exists() else None,
+        "execution": json.loads((RESULTS / "execution_costs.json").read_text()) if (RESULTS / "execution_costs.json").exists() else None,
         "n_tests": sum(f.read_text().count("\ndef test_") for f in (ROOT / "tests").glob("test_*.py")),
         "legacy": LEGACY,
     }

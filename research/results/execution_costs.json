@@ -1,0 +1,70 @@
+{
+  "observed": {
+    "date": "2026-11-16",
+    "asset": "GLDx",
+    "paid_eur": 57.0,
+    "units": 0.1754081,
+    "market_mid_eur": 321.51,
+    "implied_eur": 324.96,
+    "all_in_cost": 0.0107
+  },
+  "cases": {
+    "order_book": {
+      "fund_cost_per_side": 0.0038,
+      "cost_per_year": 0.007236562940227289,
+      "turnover_per_year": 1.4156555522218837,
+      "design": {
+        "cagr": 0.11487874956481181,
+        "vol": 0.12275907062362174,
+        "sharpe": 0.9474325506911824,
+        "sharpe_excess": 0.9240588151287734,
+        "max_drawdown": -0.17248275046591777
+      },
+      "holdout": {
+        "cagr": 0.11862995507232243,
+        "vol": 0.1243665807883878,
+        "sharpe": 0.9637907046874582,
+        "sharpe_excess": 0.7779621595842591,
+        "max_drawdown": -0.11293970113844098
+      }
+    },
+    "convert": {
+      "fund_cost_per_side": 0.0107,
+      "cost_per_year": 0.016508427881784988,
+      "turnover_per_year": 1.408673070122934,
+      "design": {
+        "cagr": 0.10552419926042589,
+        "vol": 0.12293848602869752,
+        "sharpe": 0.8776774524540896,
+        "sharpe_excess": 0.854342717193208,
+        "max_drawdown": -0.17566961727855224
+      },
+      "holdout": {
+        "cagr": 0.10857564666204911,
+        "vol": 0.12492300121312852,
+        "sharpe": 0.8877609322572254,
+        "sharpe_excess": 0.7027430565300004,
+        "max_drawdown": -0.11515521685861863
+      }
+    },
+    "convert_pessimistic": {
+      "fund_cost_per_side": 0.015,
+      "cost_per_year": 0.022308472660079667,
+      "turnover_per_year": 1.412902388484417,
+      "design": {
+        "cagr": 0.10006781586865743,
+        "vol": 0.12311745387538497,
+        "sharpe": 0.836384218719742,
+        "sharpe_excess": 0.8130869804136035,
+        "max_drawdown": -0.17742285563116378
+      },
+      "holdout": {
+        "cagr": 0.10162210043696285,
+        "vol": 0.12495776519367113,
+        "sharpe": 0.8371793420841304,
+        "sharpe_excess": 0.6522016259557624,
+        "max_drawdown": -0.11524529477469225
+      }
+    }
+  }
+}

@@ -105,6 +105,9 @@ td { padding: 4px 6px 4px 0; border-top: 1px solid var(--hair); white-space: now
 .ohlc { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 11.5px; color: var(--ink-2); min-height: 17px; } .ohlc span b { font-weight: 400; color: var(--muted); margin-right: 4px; }
 .cv { position: relative; height: 372px; margin-top: 4px; } .cv canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: pan-y; }   /* the bitmap is larger on dense screens; the box is not */
 @media (max-width: 1180px) { .cv { height: 300px; } }
+/* TradingView's embedded chart: their widget, their data. Shown instead of the canvas when chosen. */
+.tv { height: 430px; margin-top: 6px; } .tv .tradingview-widget-container, .tv .tradingview-widget-container__widget, .tv iframe { width: 100%; height: 100%; border: 0; }
+.chart.tvmode #ivs, .chart.tvmode .ohlc, .chart.tvmode .cv { display: none; }
 .note { font: 400 12px/1.45 var(--sans); color: var(--ink-2); margin-top: 6px; max-width: 80ch; }
 
 /* model */
@@ -165,11 +168,13 @@ footer { padding: 12px max(12px, env(safe-area-inset-right, 0px)) 22px max(12px,
 
   <section class="pane chart" aria-labelledby="h-chart">
     <h2 id="h-chart"><span data-t="market"></span>
+      <span class="seg" role="group" id="views" aria-label="Chart"><button type="button" data-view="hermes">Hermes</button><button type="button" data-view="tv">TradingView</button></span>
       <span class="seg" role="group" id="ivs" aria-label="Interval"><button type="button" data-iv="15">15m</button><button type="button" data-iv="60">1H</button><button type="button" data-iv="240">4H</button><button type="button" data-iv="1440">1D</button></span></h2>
     <div class="chips" id="chips" role="group"></div>
     <div class="cbar"><span class="px" id="cPx">—</span><span id="cChg" class="flat"></span><span class="nm" id="cName"></span></div>
     <div class="ohlc" id="ohlc"></div>
     <div class="cv"><canvas id="cv" role="img" aria-label=""></canvas></div>
+    <div class="tv" id="tv" hidden></div>
     <p class="note" id="cNote" hidden></p>
   </section>
 
@@ -231,7 +236,11 @@ const I18N = {
   foot: "Precios, velas, libro y operaciones: canal público de Kraken, en tiempo real. Señales, cuenta y registro: última ejecución del modelo, que decide una vez al día, de madrugada. Un modelo sistemático que opera poco no produce un goteo de órdenes: lo que se mueve aquí es el mercado; lo que cambia cada noche es la decisión. Rentabilidades pasadas no garantizan futuras. Esto no es asesoramiento financiero.",
   "mode.paper": "Simulado", "mode.live": "Real · armado", "mode.validate": "Real · validación",
   "feed.live": "En vivo · Kraken", "feed.wait": "Conectando…", "feed.down": "Sin conexión en vivo",
-  "g.equity": "Bolsa", "g.real": "Activos reales", "g.crypto": "Criptomonedas",
+  "g.equity": "Bolsa", "g.real": "Activos reales", "g.crypto": "Criptomonedas", "g.stock": "Sus acciones",
+  "st.favHold": "En su cesta de acciones: tendencia alcista.", "st.favEnter": "Entra en la cesta en la próxima revisión semanal.", "st.favWould": "Entraría hoy en la cesta de acciones, que está apagada.",
+  "st.favSeat": "En tendencia alcista, pero la cesta ya tiene sus 4 acciones.", "st.favNew": "Acción nueva: el filtro necesita seis meses de precios antes de juzgarla.", "st.favNone": "Fuera de la cesta: su tendencia no es alcista.",
+  "t.fav": "ACCIONES", "j.favOff": "cesta de acciones apagada · hoy entrarían: {l}", "j.favOn": "cesta de acciones: {l}", "j.favNone": "ninguna",
+  tvNote: "Gráfico de TradingView: sus datos y sus herramientas. La señal del modelo está en el panel de abajo.",
   "c.sym": "Mercado", "c.last": "Último", "c.day": "24 h", "c.trend": "P(tend ↑)", "c.tgt": "Obj.",
   "o.o": "A", "o.h": "Máx", "o.l": "Mín", "o.c": "C", "o.v": "Vol", loading: "Cargando velas…", nodata: "Kraken no devuelve velas para este mercado.",
   thin: "Este mercado apenas se negocia en Kraken: el modelo lo vigila pero no lo opera.",
@@ -257,7 +266,11 @@ const I18N = {
   foot: "Prices, candles, book and trades: Kraken's public feed, in real time. Signals, account and log: the model's last run; it decides once a day, overnight. A systematic model that trades rarely does not produce a stream of orders: what moves here is the market; what changes each night is the decision. Past returns do not guarantee future ones. This is not financial advice.",
   "mode.paper": "Paper", "mode.live": "Live · armed", "mode.validate": "Live · validate only",
   "feed.live": "Live · Kraken", "feed.wait": "Connecting…", "feed.down": "No live connection",
-  "g.equity": "Equities", "g.real": "Real assets", "g.crypto": "Crypto",
+  "g.equity": "Equities", "g.real": "Real assets", "g.crypto": "Crypto", "g.stock": "Your stocks",
+  "st.favHold": "In your stock basket: uptrend.", "st.favEnter": "Joins the basket at the next weekly review.", "st.favWould": "Would join the stock basket today; the basket is switched off.",
+  "st.favSeat": "In an uptrend, but the basket already holds its 4 stocks.", "st.favNew": "New stock: the filter needs six months of prices before judging it.", "st.favNone": "Out of the basket: its trend is not up.",
+  "t.fav": "STOCKS", "j.favOff": "stock basket off · today it would hold: {l}", "j.favOn": "stock basket: {l}", "j.favNone": "none",
+  tvNote: "TradingView chart: their data and their tools. The model's signal is in the panel below.",
   "c.sym": "Market", "c.last": "Last", "c.day": "24h", "c.trend": "P(trend ↑)", "c.tgt": "Tgt",
   "o.o": "O", "o.h": "H", "o.l": "L", "o.c": "C", "o.v": "Vol", loading: "Loading candles…", nodata: "Kraken returns no candles for this market.",
   thin: "This market barely trades on Kraken: the model watches it but does not trade it.",
@@ -307,11 +320,15 @@ let book = { bids: new Map(), asks: new Map() }, prints = [];
 const dirty = { rows: new Set(), head: false, acct: false, book: false, prints: false, chart: false };
 const REST_ALT = { BTC: "XBT", DOGE: "XDG" };
 
+const favOn = () => !!(LIVE && LIVE.favourites && LIVE.favourites.enabled);
+/* The owner's single stocks, shaped like the model's markets. Their target only counts while the basket is switched on. */
+function stockRows() { return ((LIVE.favourites || {}).rows || []).filter(r => r.pair && (r.price_history || []).length).map(r => ({ ...r, class: "stock", fav: true, target: favOn() ? (r.target || 0) : 0 })); }
 function buildMarkets() {
   M.clear(); byWs.clear();
-  const order = { equity: 0, real: 1, crypto: 2 };
-  const original = LIVE.model.assets.map(a => a.symbol);
-  const assets = [...LIVE.model.assets].sort((a, b) => order[a.class] - order[b.class] || (b.target - a.target) || (b.prob_up - a.prob_up));
+  const order = { equity: 0, stock: 1, real: 2, crypto: 3 };
+  const all = [...LIVE.model.assets, ...stockRows()];
+  const original = all.map(a => a.symbol);
+  const assets = [...all].sort((a, b) => order[a.class] - order[b.class] || (b.target - a.target) || (b.prob_up - a.prob_up));
   for (const a of assets) {
     const tokenized = a.tokenized ?? a.class !== "crypto", quote = a.quote || (tokenized ? "USD" : "EUR");
     const m = { sym: a.symbol, a, tokenized, quote, ws: `${a.symbol}${tokenized ? "x" : ""}/${quote}`,
@@ -408,7 +425,9 @@ function renderStatic() {
 
 /* ------------------------------------------------------------------ watchlist + tape */
 const chipRank = (m) => (m.a.class === "crypto" && m.a.eligible ? 0 : m.a.class !== "crypto" ? 100 : 200) + m.idx;   // majors, then funds, then the rest
-function stateOf(m) { const a = m.a; return a.venue_liquid === false ? "illiq" : !a.eligible ? "out" : a.target > 0.0005 ? (a.score < 0.05 ? "core" : "hold") : "none"; }
+function stateOf(m) { const a = m.a;
+  if (a.fav) return a.venue_liquid === false ? "illiq" : a.target > 0.0005 ? "favHold" : a.status === "picked" ? (favOn() ? "favEnter" : "favWould") : a.status === "no_seat" ? "favSeat" : a.status === "too_new" ? "favNew" : "favNone";
+  return a.venue_liquid === false ? "illiq" : !a.eligible ? "out" : a.target > 0.0005 ? (a.score < 0.05 ? "core" : "hold") : "none"; }
 function renderWatch() {
   const tb = $("#watch"); tb.replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("c.sym"), style: "padding-left:8px" }), h("th", { class: "r", text: T("c.last") }), h("th", { class: "r", text: T("c.day") }), h("th", { class: "r", text: T("c.trend") }), h("th", { class: "r", text: T("c.tgt") }))));
   const body = h("tbody"); let group = null;
@@ -443,10 +462,30 @@ function select(sym, focus) {
   for (const m of M.values()) if (m.row) m.row.setAttribute("aria-selected", String(m.sym === sel));
   document.querySelectorAll("#chips button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.s === sel)));
   book = { bids: new Map(), asks: new Map() }; prints = []; hover = null;
-  renderHead(); renderModel(); renderBook(); renderPrints(); subscribeSelected(); loadCandles();
+  renderHead(); renderModel(); renderBook(); renderPrints(); subscribeSelected(); loadCandles(); renderTV();
   if (focus && M.get(sym).row) M.get(sym).row.focus({ preventScroll: first });
   try { history.replaceState(null, "", "#" + sym); } catch (e) {}
   return true;
+}
+
+/* ------------------------------------------------------------------ TradingView's chart, as an alternative view */
+let view = "hermes"; try { view = localStorage.getItem("hq-view") === "tv" ? "tv" : "hermes"; } catch (e) {}
+const TV_FUNDS = { SPY: "AMEX:SPY", QQQ: "NASDAQ:QQQ", IWM: "AMEX:IWM", VGK: "AMEX:VGK", IEMG: "AMEX:IEMG", GLD: "AMEX:GLD", SLV: "AMEX:SLV", XLE: "AMEX:XLE" };
+const tvSymbol = (m) => TV_FUNDS[m.sym] || (m.a.class === "crypto" ? `KRAKEN:${m.sym}EUR` : m.sym);      // a stock resolves by its ticker alone
+function renderTV() {
+  const pane = document.querySelector(".pane.chart"), box = $("#tv"), on = view === "tv", m = M.get(sel);
+  pane.classList.toggle("tvmode", on); box.hidden = !on;
+  document.querySelectorAll("#views button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === view)));
+  const key = on && m ? `${tvSymbol(m)}|${lang}` : "";
+  if (box.dataset.key === key) return;
+  box.dataset.key = key; box.replaceChildren();
+  if (!key) return;
+  const wrap = h("div", { class: "tradingview-widget-container" }, h("div", { class: "tradingview-widget-container__widget" }));
+  const sc = document.createElement("script"); sc.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"; sc.async = true;
+  sc.textContent = JSON.stringify({ autosize: true, symbol: tvSymbol(m), interval: "60", timezone: "Europe/Madrid", theme: "dark", style: "1", locale: lang,
+    allow_symbol_change: false, hide_side_toolbar: true, calendar: false, support_host: "https://www.tradingview.com" });
+  wrap.append(sc); box.append(wrap);
+  const note = $("#cNote"); note.hidden = false; note.textContent = T("tvNote");
 }
 
 /* ------------------------------------------------------------------ live chart */
@@ -454,7 +493,7 @@ function renderHead() {
   const m = M.get(sel); if (!m) return;
   $("#cPx").textContent = px(m.last); const c = $("#cChg"); c.textContent = ok(m.chg) ? `${arrow(m.chg)} ${pct(Math.abs(m.chg), 2)} · ${T("c.day")}` : ""; c.className = dir(m.chg);
   $("#cName").textContent = `${m.ws} · ${nm(m.a.name)}`;
-  const note = $("#cNote"), thin = m.a.venue_liquid === false; note.hidden = !thin; note.textContent = thin ? T("thin") : "";
+  const note = $("#cNote"), thin = m.a.venue_liquid === false, tv = view === "tv"; note.hidden = !(thin || tv); note.textContent = tv ? T("tvNote") : thin ? T("thin") : "";
   $("#bookSub").textContent = m.ws;
 }
 function niceTicks(lo, hi, n) { const span = hi - lo, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw)), step = [1, 2, 2.5, 5, 10].map(k => k * mag).find(s => s >= raw) || raw; const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-12; v += step) out.push(v); return out; }
@@ -537,7 +576,7 @@ function lineChart(box, series, opt) {
   svg.addEventListener("pointermove", move); svg.addEventListener("pointerleave", () => { tip.hidden = true; cross.setAttribute("visibility", "hidden"); dots.forEach(d => d.setAttribute("visibility", "hidden")); });
 }
 function renderModel() {
-  const m = M.get(sel); if (!m || !LIVE) return; const a = m.a, st = stateOf(m), hand = LIVE.account.mode === "live" && m.tokenized && (st === "core" || st === "hold");
+  const m = M.get(sel); if (!m || !LIVE) return; const a = m.a, st = stateOf(m), hand = LIVE.account.mode === "live" && m.tokenized && (st === "core" || st === "hold" || st === "favHold");
   $("#modelSub").textContent = `${m.sym} · ${nm(a.name)} · ${T("modelSub")}`;
   const stat = (k, v, cls) => h("div", { class: "stat" }, h("span", { text: T(k) }), h("b", { class: cls || null, text: v }));
   const signed = (v) => [`${arrow(v)} ${pct(Math.abs(v), 1)}`, dir(v)];
@@ -589,6 +628,9 @@ function buildLog() {
   const cr = assets.filter(x => x.class === "crypto" && x.eligible), on = cr.filter(x => x.target > 0.0005);
   if (on.length) for (const x of cr) add("sig", T(x.target > 0.0005 ? "j.sig" : "j.sigNone", { s: x.symbol, p: pct(x.prob_up, 0), w: pct(x.target, 1) }));
   else if (cr.length) add("sig", T("j.crypto", { n: String(cr.length), l: cr.map(x => `${x.symbol} ${pct(x.prob_up, 0)}`).join(", ") }));
+  const F = LIVE.favourites;
+  if (F && (F.rows || []).length) { const inB = F.rows.filter(r => r.target > 0.0005).map(r => `${r.symbol} ${pct(r.target, 1)}`), would = F.rows.filter(r => r.status === "picked").map(r => r.symbol);
+    add("fav", F.enabled ? T("j.favOn", { l: inB.join(", ") || T("j.favNone") }) : T("j.favOff", { l: would.join(", ") || T("j.favNone") })); }
   if (a.halted) add("warn", T("j.halt"), true);
   if (a.flow_today) add("warn", T("j.flow", { v: (a.flow_today > 0 ? "+" : "−") + eur(Math.abs(a.flow_today)) }), true);
   if (Object.keys(a.unrecognised || {}).length) add("warn", T("j.unknown", { l: Object.keys(a.unrecognised).join(", ") }), true);
@@ -630,8 +672,9 @@ function tick() {
   const s = Math.floor((next - now) / 1000); $("#count").textContent = `${two(Math.floor(s / 3600))}:${two(Math.floor(s % 3600 / 60))}:${two(s % 60)}`;
   if (wsOpen && lastMsg && Date.now() - lastMsg > 20000) { try { ws.close(); } catch (e) {} }
 }
-function renderAll() { renderStatic(); if (!LIVE) return; renderWatch(); renderHead(); renderModel(); renderAcct(); renderLog(); renderBook(); renderPrints(); dirty.chart = true; schedule(); }
-const ALIAS = { ORO: "GLD", GOLD: "GLD", PLATA: "SLV", SILVER: "SLV", BITCOIN: "BTC", ETHEREUM: "ETH", SP500: "SPY", "S&P": "SPY", NASDAQ: "QQQ", XBT: "BTC" };
+function renderAll() { renderStatic(); if (!LIVE) return; renderWatch(); renderHead(); renderModel(); renderAcct(); renderLog(); renderBook(); renderPrints(); renderTV(); dirty.chart = true; schedule(); }
+const ALIAS = { ORO: "GLD", GOLD: "GLD", PLATA: "SLV", SILVER: "SLV", BITCOIN: "BTC", ETHEREUM: "ETH", SP500: "SPY", "S&P": "SPY", NASDAQ: "QQQ", XBT: "BTC",
+  NVIDIA: "NVDA", TESLA: "TSLA", APPLE: "AAPL", GOOGLE: "GOOGL", ALPHABET: "GOOGL", MICROSOFT: "MSFT", AMAZON: "AMZN", FACEBOOK: "META", SPACEX: "SPCX" };
 $("#cmd").addEventListener("keydown", (e) => { if (e.key !== "Enter") return; const raw = e.target.value.trim().toUpperCase().replace(/X?\/(EUR|USD)$/, ""), s = ALIAS[raw] || raw, hit = M.has(s) ? s : [...M.keys()].find(k => k.startsWith(s)); if (hit && select(hit)) { e.target.value = ""; e.target.blur(); } });
 document.addEventListener("keydown", (e) => { if (e.key === "/" && document.activeElement !== $("#cmd")) { e.preventDefault(); $("#cmd").focus(); } });
 $("#watch").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-s]"); if (tr) select(tr.dataset.s); });
@@ -640,6 +683,7 @@ $("#watch").addEventListener("keydown", (e) => { const tr = e.target.closest("tr
   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(tr.dataset.s); }
   if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); const rows = [...document.querySelectorAll("#watch tr[data-s]")], i = rows.indexOf(tr) + (e.key === "ArrowDown" ? 1 : -1); if (rows[i]) { rows[i].focus(); select(rows[i].dataset.s); } } });
 $("#ivs").addEventListener("click", (e) => { const b = e.target.closest("button[data-iv]"); if (!b || +b.dataset.iv === interval) return; interval = +b.dataset.iv; renderStatic(); subscribeSelected(); loadCandles(); });
+$("#views").addEventListener("click", (e) => { const b = e.target.closest("button[data-view]"); if (!b || b.dataset.view === view) return; view = b.dataset.view; try { localStorage.setItem("hq-view", view); } catch (e2) {} renderHead(); renderTV(); dirty.chart = true; schedule(); });
 for (const l of ["es", "en"]) $("#lang-" + l).addEventListener("click", () => { lang = l; try { localStorage.setItem("hq-lang", l); } catch (e) {} renderAll(); });
 
 const getLive = () => fetch("live.json", { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
@@ -649,7 +693,7 @@ getLive().then((l) => {
   LIVE = l; buildMarkets(); renderAll();
   const want = decodeURIComponent(location.hash.slice(1)).toUpperCase(); select(M.has(want) ? want : M.has("BTC") ? "BTC" : M.keys().next().value);
   connect();
-  setInterval(async () => { const n = await getLive(); if (!n || n.meta.generated_at === LIVE.meta.generated_at) return; LIVE = n; for (const a of n.model.assets) { const m = M.get(a.symbol); if (m) m.a = a; } renderAll(); }, 300000);
+  setInterval(async () => { const n = await getLive(); if (!n || n.meta.generated_at === LIVE.meta.generated_at) return; LIVE = n; for (const a of [...n.model.assets, ...stockRows()]) { const m = M.get(a.symbol); if (m) m.a = a; } renderAll(); }, 300000);
 });
 </script>
 </body>

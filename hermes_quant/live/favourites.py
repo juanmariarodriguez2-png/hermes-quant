@@ -41,6 +41,7 @@ import numpy as np
 import pandas as pd
 
 from ..model import ModelConfig, compute_features
+from ..report.snapshot import asset_view
 from ..universe import LIVE_BY_SYMBOL, Instrument, stock_instrument
 from .market import PriceStore, build_live_panel
 
@@ -161,10 +162,12 @@ def evaluate(store: PriceStore, basket: Basket, cfg: ModelConfig, bar_date: pd.T
             status = "trend_down" if prob[s] < 0.5 else "trend_weak"
         back = lambda days: (round(last / float(close[s].iloc[t - days]) - 1.0, 4)            # noqa: E731
                              if t >= days and np.isfinite(close[s].iloc[t - days]) else None)
-        rows[s].update(status=status, prob_up=round(prob[s], 4) if np.isfinite(prob[s]) else None,
-                       vol=round(float(features.vol[s].iloc[t]), 4) if np.isfinite(features.vol[s].iloc[t]) else None,
+        inst = stock_instrument(s)
+        # the same fields the model publishes for its own markets, so the terminal can chart a stock like any other
+        rows[s].update(asset_view(panel, features, s, t))
+        rows[s].update({"class": inst.asset_class, "quote": inst.quote, "tokenized": inst.tokenized},
+                       status=status, eligible=eligible[s], venue_liquid=liquid,
                        history_days=history, days_to_wait=max(0, basket.min_history_days - history), liquid=liquid,
-                       price=round(last, 6) if np.isfinite(last) else None, ret_30d=back(30), ret_180d=back(180),
-                       weight=weights.get(s, 0.0))
+                       ret_180d=back(180), weight=weights.get(s, 0.0))
     return {"rows": list(rows.values()), "weights": weights,
             "last_close": {s: float(close[s].iloc[t]) for s in panel.close.columns if np.isfinite(close[s].iloc[t])}}

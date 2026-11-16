@@ -30,36 +30,47 @@ def _series(s: pd.Series, digits: int = 4) -> list:
     return [[d.strftime("%Y-%m-%d"), _round(v, digits)] for d, v in s.items() if np.isfinite(v)]
 
 
+def asset_view(panel: Panel, features: Features, symbol: str, t: int, history_days: int = 365) -> dict:
+    """What the filters say about one market on day ``t``: price, trend probability,
+    volatility, recent returns and a year of history for the charts. Used for the
+    model's own markets and for the owner's single stocks alike."""
+    close = panel.close[symbol]
+    window = slice(max(0, t - history_days + 1), t + 1)
+    px = close.iloc[window]
+    last = close.iloc[t]
+    ret = lambda days: _round(last / close.iloc[t - days] - 1.0) if t >= days else None  # noqa: E731
+    known = close.iloc[: t + 1].dropna()                    # a market listed recently has no price before its first day
+    vol_d = features.vol[symbol].iloc[t] / np.sqrt(365.0)
+    trend = kalman.filtered_price_trend(np.log(known.to_numpy())[-800:], level_var=(0.15 * vol_d) ** 2,
+                                        slope_var=(0.004 * vol_d) ** 2, obs_var=vol_d**2)
+    trend_line = pd.Series(np.exp(trend), index=known.index[-len(trend):]).reindex(px.index)
+    return {
+        "price": _round(last, 6), "prob_up": _round(features.prob_up[symbol].iloc[t]),
+        "score": _round(features.score[symbol].iloc[t]),
+        "latent_sharpe": _round(features.latent_sharpe[symbol].iloc[t], 2),
+        "vol": _round(features.vol[symbol].iloc[t]),
+        "ret_30d": ret(30), "ret_90d": ret(90), "ret_365d": ret(365),
+        "prob_history": _series(features.prob_up[symbol].iloc[window].iloc[::3], 3),
+        "price_history": _series(px.iloc[::3], 6), "trend_history": _series(trend_line.iloc[::3], 6),
+    }
+
+
 def model_snapshot(panel: Panel, features: Features, cfg: ModelConfig, t: int,
                    allocation: Allocation, history_days: int = 365) -> dict:
     """Everything the model believes on day ``t``."""
     index = panel.close.index
     lo = max(0, t - history_days + 1)
-    window = slice(lo, t + 1)
     close = panel.close
     conviction = allocation.diagnostics.get("conviction", {})
     assets = []
     for symbol in close.columns:
-        px = close[symbol].iloc[window]
-        last = close[symbol].iloc[t]
-        ret = lambda days: _round(last / close[symbol].iloc[t - days] - 1.0) if t >= days else None  # noqa: E731
-        logp = np.log(close[symbol].iloc[: t + 1].to_numpy())
-        vol_d = features.vol[symbol].iloc[t] / np.sqrt(365.0)
-        trend = kalman.filtered_price_trend(logp[-800:], level_var=(0.15 * vol_d) ** 2,
-                                            slope_var=(0.004 * vol_d) ** 2, obs_var=vol_d**2)
-        trend_line = pd.Series(np.exp(trend[-len(px):]), index=px.index)
         assets.append({
             "symbol": symbol, "name": NAMES.get(symbol, symbol), "class": panel.classes[symbol],
-            "price": _round(last, 6), "prob_up": _round(features.prob_up[symbol].iloc[t]),
-            "score": _round(features.score[symbol].iloc[t]),
-            "latent_sharpe": _round(features.latent_sharpe[symbol].iloc[t], 2),
-            "vol": _round(features.vol[symbol].iloc[t]), "eligible": bool(features.eligible[symbol].iloc[t]),
+            **asset_view(panel, features, symbol, t, history_days),
+            "eligible": bool(features.eligible[symbol].iloc[t]),
             "venue_liquid": True if panel.investable is None else bool(panel.investable[symbol].iloc[t]),
             "conviction": _round(conviction.get(symbol, 0.0)),
             "target": _round(allocation.weights.get(symbol, 0.0)),
-            "ret_30d": ret(30), "ret_90d": ret(90), "ret_365d": ret(365),
-            "prob_history": _series(features.prob_up[symbol].iloc[window].iloc[::3], 3),
-            "price_history": _series(px.iloc[::3], 6), "trend_history": _series(trend_line.iloc[::3], 6),
         })
 
     regime = {}

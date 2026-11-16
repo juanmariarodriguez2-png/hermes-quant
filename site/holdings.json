@@ -1,0 +1,105 @@
+{
+ "as_of": "2026-11-16",
+ "source": "Yahoo Finance, ten largest holdings of each fund",
+ "funds": {
+  "SPY": [
+   {
+    "symbol": "AAPL",
+    "name": "Apple Inc",
+    "weight": 0.077007
+   },
+   {
+    "symbol": "NVDA",
+    "name": "NVIDIA Corp",
+    "weight": 0.075823
+   },
+   {
+    "symbol": "MSFT",
+    "name": "Microsoft Corp",
+    "weight": 0.059332
+   },
+   {
+    "symbol": "GOOGL",
+    "name": "Alphabet Inc",
+    "weight": 0.045388
+   },
+   {
+    "symbol": "AMZN",
+    "name": "Amazon.com Inc",
+    "weight": 0.036119
+   },
+   {
+    "symbol": "AVGO",
+    "name": "Broadcom Inc",
+    "weight": 0.023752
+   },
+   {
+    "symbol": "META",
+    "name": "Meta Platforms Inc",
+    "weight": 0.020763
+   },
+   {
+    "symbol": "LLY",
+    "name": "Eli Lilly and Co",
+    "weight": 0.017367
+   },
+   {
+    "symbol": "TSLA",
+    "name": "Tesla Inc",
+    "weight": 0.017252
+   }
+  ],
+  "QQQ": [
+   {
+    "symbol": "AAPL",
+    "name": "Apple Inc",
+    "weight": 0.081592
+   },
+   {
+    "symbol": "NVDA",
+    "name": "NVIDIA Corp",
+    "weight": 0.080006
+   },
+   {
+    "symbol": "MSFT",
+    "name": "Microsoft Corp",
+    "weight": 0.062867
+   },
+   {
+    "symbol": "MU",
+    "name": "Micron Technology Inc",
+    "weight": 0.044747
+   },
+   {
+    "symbol": "AMZN",
+    "name": "Amazon.com Inc",
+    "weight": 0.042053
+   },
+   {
+    "symbol": "AMD",
+    "name": "Advanced Micro Devices Inc",
+    "weight": 0.036903
+   },
+   {
+    "symbol": "TSLA",
+    "name": "Tesla Inc",
+    "weight": 0.03407
+   },
+   {
+    "symbol": "META",
+    "name": "Meta Platforms Inc",
+    "weight": 0.029664
+   },
+   {
+    "symbol": "WMT",
+    "name": "Walmart Inc",
+    "weight": 0.026899
+   },
+   {
+    "symbol": "GOOGL",
+    "name": "Alphabet Inc",
+    "weight": 0.026637
+   }
+  ]
+ }
+}

@@ -221,6 +221,7 @@ footer p + p { margin-top: 6px; }
   <div class="grid">
     <div class="card c7"><h3 data-t="pf.positions"></h3><div class="scroll"><table id="positions"></table></div><p class="note" id="pfNote"></p></div>
     <div class="card c5"><h3 data-t="pf.track"></h3><p class="sub" data-t="pf.trackSub"></p><div class="chart" id="liveChart"></div><div class="scroll"><table id="orders"></table></div></div>
+    <div class="card" id="throughCard" hidden><h3 data-t="lt.title"></h3><p class="sub" data-t="lt.sub"></p><div class="scroll"><table id="through"></table></div><p class="note" id="throughNote"></p></div>
   </div>
 </div></section>
 
@@ -307,6 +308,8 @@ es: {
  "pf.empty": "Todo en liquidez por ahora.", "pf.noOrders": "Sin órdenes todavía.",
  "pf.note": "Objetivo fijado el {d}. Próxima revisión en {n} días.", "pf.weekend": " Las acciones tokenizadas solo se negocian de lunes a viernes: las órdenes pendientes saldrán en la próxima sesión.",
  "col.date": "Fecha", "col.order": "Orden", "col.amount": "Importe", "col.cost": "Coste",
+ "lt.title": "Empresas que ya tiene a través de los fondos", "lt.sub": "Un fondo de índice es una cesta: quien lo tiene, tiene un trozo de cada empresa que lo compone. Estas son las mayores.",
+ "lt.company": "Empresa", "lt.via": "A través de", "lt.share": "% de la cuenta", "lt.note": "Solo cuenta las diez mayores posiciones de cada fondo, a {d} (Yahoo Finance); la cifra real es algo mayor.",
  "buy": "Compra", "sell": "Venta", "live.hermes": "Hermes", "live.btc": "Bitcoin", "live.spx": "S&P 500", "live.soon": "La curva aparecerá cuando haya al menos dos días de historia.",
  "ev.eyebrow": "Evidencia", "ev.title": "Diseñado con datos hasta 2021, examinado a ciegas desde 2022",
  "ev.lede": "Todas las decisiones de diseño se tomaron con datos hasta el 31/12/2021. Los años posteriores se guardaron bajo llave y se evaluaron una sola vez, con el modelo ya congelado. Comisiones reales de Kraken, un día de retraso en la ejecución y universo sin sesgo de supervivencia.",
@@ -335,6 +338,7 @@ es: {
  "watch.eyebrow": "Vigilado, no operado", "watch.title": "Acciones sueltas y derivados",
  "watch.lede": "El motor puede operarlos, pero solo entra en cartera lo que ha superado una prueba honesta. Estas dos familias todavía no, y se explica por qué.",
  "radar.title": "Radar de acciones", "radar.sub": "El mismo filtro de tendencia sobre las acciones tokenizadas más líquidas de Kraken. No se operan: su lista la eligió el mercado mirando al pasado, y sin un histórico libre de ese sesgo cualquier regla de selección sería una corazonada.",
+ "radar.tested": "El mismo filtro de tendencia sobre las acciones tokenizadas más líquidas de Kraken. No se operan, y no por falta de prueba: se ensayaron {n} reglas para elegir acciones entre las empresas que estaban en el S&P 500 en cada fecha, y ninguna superó al propio índice. La mejor rindió {a} anual frente a {b} del fondo de índice entre 2007 y 2021, y {c} frente a {d} desde 2022. El modelo ya tiene esas empresas a través de los fondos.",
  "col.liq": "Volumen/día", "col.m6": "180 días",
  "deriv.title": "Derivados: lo que cuestan hoy", "deriv.sub": "Financiación anualizada de los perpetuos de Kraken (positiva: la pagan los largos). Es un dato horario y oscila mucho.",
  "col.market": "Mercado", "col.funding": "Financiación", "col.vol24": "Volumen 24 h",
@@ -413,6 +417,8 @@ en: {
  "pf.empty": "All in cash for now.", "pf.noOrders": "No orders yet.",
  "pf.note": "Target set on {d}. Next review in {n} days.", "pf.weekend": " Tokenized stocks trade Monday to Friday only: pending orders go out at the next session.",
  "col.date": "Date", "col.order": "Order", "col.amount": "Amount", "col.cost": "Cost",
+ "lt.title": "Companies already owned through the funds", "lt.sub": "An index fund is a basket: holding it means holding a slice of every company in it. These are the largest.",
+ "lt.company": "Company", "lt.via": "Through", "lt.share": "% of account", "lt.note": "Counts only each fund's ten largest holdings, as of {d} (Yahoo Finance); the true figure is a little higher.",
  "buy": "Buy", "sell": "Sell", "live.hermes": "Hermes", "live.btc": "Bitcoin", "live.spx": "S&P 500", "live.soon": "The curve appears once there are at least two days of history.",
  "ev.eyebrow": "Evidence", "ev.title": "Designed on data to 2021, examined blind from 2022",
  "ev.lede": "Every design decision used data up to 31 Dec 2021. The years after were locked away and evaluated once, with the model already frozen. Real Kraken fees, a one-day execution delay, and a survivorship-free universe.",
@@ -441,6 +447,7 @@ en: {
  "watch.eyebrow": "Watched, not traded", "watch.title": "Single stocks and derivatives",
  "watch.lede": "The engine can trade them, but only what has passed an honest test gets into the portfolio. These two families have not yet, and here is why.",
  "radar.title": "Stock radar", "radar.sub": "The same trend filter on Kraken's most liquid tokenized stocks. Not traded: the list was chosen by the market looking backwards, and without a history free of that bias any selection rule would be a hunch.",
+ "radar.tested": "The same trend filter on Kraken's most liquid tokenized stocks. Not traded, and not for want of testing: {n} rules for picking stocks among the companies that were in the S&P 500 on each date were tried, and none beat the index itself. The best returned {a} a year against the index fund's {b} from 2007 to 2021, and {c} against {d} since 2022. The model already holds these companies through the funds.",
  "col.liq": "Volume/day", "col.m6": "180 days",
  "deriv.title": "Derivatives: what they cost today", "deriv.sub": "Annualised funding on Kraken's perpetuals (positive: longs pay). It is an hourly figure and swings a lot.",
  "col.market": "Market", "col.funding": "Funding", "col.vol24": "24h volume",
@@ -681,7 +688,7 @@ function mix(a, b, t) { const pa = a.match(/\w\w/g).map(x => parseInt(x, 16)), p
 function corrColor(v) { const mid = css("--mid").replace("#", ""), pos = css("--accent").replace("#", ""), neg = css("--c-neg").replace("#", ""); return mix(mid, v >= 0 ? pos : neg, Math.min(1, Math.abs(v))); }
 
 /* ---------------------------------------------------------------- render */
-let LIVE = null, RES = null, corrMode = "cleaned", logScale = true;
+let LIVE = null, RES = null, HOLD = null, corrMode = "cleaned", logScale = true;
 
 function renderStatic() {
   document.documentElement.lang = lang;
@@ -801,9 +808,24 @@ function renderLive() {
   } else ot.append(h("tbody", {}, h("tr", {}, h("td", { class: "muted", text: T("pf.noOrders") }))));
 }
 
+function renderThrough() {
+  const card = $("#throughCard"); card.hidden = true;
+  if (!HOLD || !LIVE) return;
+  const a = LIVE.account, held = Object.fromEntries(a.positions.filter(p => p.value > 0.01).map(p => [p.symbol, p.value])), rows = {};
+  for (const [fund, list] of Object.entries(HOLD.funds)) { const v = held[fund]; if (!v) continue;
+    for (const e of list) { const r = rows[e.symbol] ||= { symbol: e.symbol, name: e.name, eur: 0, via: [] }; r.eur += v * e.weight; r.via.push(fund); } }
+  const top = Object.values(rows).sort((x, y) => y.eur - x.eur).slice(0, 10);
+  if (!top.length) return;
+  card.hidden = false;
+  $("#through").replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("lt.company") }), h("th", { text: T("lt.via") }), h("th", { class: "r", text: T("col.amount") }), h("th", { class: "r", text: T("lt.share") }))),
+    h("tbody", {}, ...top.map(r => h("tr", {}, h("td", {}, r.name, " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "mono muted", style: "font-size:12px", text: r.via.join(" · ") }), h("td", { class: "r num", text: eur(r.eur) }), h("td", { class: "r num", text: pct(a.nav ? r.eur / a.nav : 0, 1) })))));
+  $("#throughNote").textContent = T("lt.note", { d: dateFmt(HOLD.as_of) });
+}
+
 function renderWatch() {
   const rt = $("#radar"), dt = $("#deriv"), df = $("#derivFacts"); rt.replaceChildren(); dt.replaceChildren(); df.replaceChildren();
-  const radar = (LIVE && LIVE.radar) || [], der = (LIVE && LIVE.derivatives) || [];
+  const radar = (LIVE && LIVE.radar) || [], der = (LIVE && LIVE.derivatives) || [], K = RES && RES.stocks;
+  if (K && K.holdout) document.querySelector('[data-t="radar.sub"]').textContent = T("radar.tested", { n: String(K.variants_tried), a: pct(K.design.best.cagr, 1), b: pct(K.design.index.cagr, 1), c: pct(K.holdout.best.cagr, 1), d: pct(K.holdout.index.cagr, 1) });
   if (radar.length) {
     rt.append(h("thead", {}, h("tr", {}, h("th", { text: T("col.asset") }), h("th", { text: T("col.prob") }), h("th", { class: "r", text: T("col.vol") }), h("th", { class: "r", text: T("col.m1") }), h("th", { class: "r", text: T("col.m6") }), h("th", { class: "r", text: T("col.liq") }))));
     const b = h("tbody");
@@ -924,7 +946,7 @@ function renderResearch() {
   nz.append(h("p", { class: "note", text: T("old.noiseNote") }));
 }
 
-function renderAll() { renderStatic(); renderLive(); renderResearch(); renderWatch(); }
+function renderAll() { renderStatic(); renderLive(); renderThrough(); renderResearch(); renderWatch(); }
 $("#lang-es").addEventListener("click", () => { lang = "es"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#lang-en").addEventListener("click", () => { lang = "en"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#corrToggle").addEventListener("click", () => { corrMode = corrMode === "cleaned" ? "raw" : "cleaned"; renderHeat(); });
@@ -934,7 +956,7 @@ new MutationObserver(renderAll).observe(document.documentElement, { attributes: 
 
 renderStatic();
 const get = (f) => fetch(f, { cache: "no-store" }).then(r => r.ok ? r.json() : null).catch(() => null);
-Promise.all([get("live.json"), get("research.json")]).then(([l, r]) => { LIVE = l; RES = r; renderAll(); });
+Promise.all([get("live.json"), get("research.json"), get("holdings.json")]).then(([l, r, hd]) => { LIVE = l; RES = r; HOLD = hd; renderAll(); });
 </script>
 </body>
 </html>

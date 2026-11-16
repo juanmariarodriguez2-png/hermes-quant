@@ -63,6 +63,22 @@ def stop_noise(legacy: dict) -> None:
         trade["noise_hit_prob"] = float(2.0 * norm.cdf(-trade["stop_distance"] / daily))
 
 
+def stocks_summary() -> dict | None:
+    """The single-stock study in a few numbers: the index fund against the best rule tried."""
+    path = RESULTS / "stock_sleeve.json"
+    if not path.exists():
+        return None
+    k = json.loads(path.read_text())
+    best = k["selection"]["chosen"]
+    out = {"variants_tried": k["selection"]["variants_tried"], "adopted": k["selection"]["adopted"], "best_rule": best,
+           "coverage": {"min": min(k["coverage"].values()), "max": max(k["coverage"].values())},
+           "design": {"index": k["design"]["index fund (SPY)"], "best": k["design"][best]},
+           "favourites_hindsight": k.get("favourites_hindsight")}
+    if "holdout" in k:
+        out["holdout"] = {"index": k["holdout"]["index fund (SPY)"], "best": k["holdout"][best]}
+    return out
+
+
 def main() -> None:
     stop_noise(LEGACY)
     hold = json.loads((RESULTS / "holdout.json").read_text())
@@ -98,6 +114,7 @@ def main() -> None:
         "selected": design.get("selected"),
         "derivatives": json.loads((RESULTS / "derivatives.json").read_text()) if (RESULTS / "derivatives.json").exists() else None,
         "execution": json.loads((RESULTS / "execution_costs.json").read_text()) if (RESULTS / "execution_costs.json").exists() else None,
+        "stocks": stocks_summary(),
         "n_tests": sum(f.read_text().count("\ndef test_") for f in (ROOT / "tests").glob("test_*.py")),
         "legacy": LEGACY,
     }

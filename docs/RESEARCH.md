@@ -189,6 +189,37 @@ Funding history starts in 2020, too short to split. Parameters fixed a priori, o
 
 Cash-and-carry (own the coin, short the perpetual, enter when 30-day funding exceeds 6% a year): BTC net +10.5% in 2020, +25.3% in 2021, +2.2%, +5.6%, +7.9%, +4.2%, and +0.1% in 2026. The trade is crowded out. The live engine reads Kraken's funding every day and flags it when it is worth doing again.
 
+## Step 8. Single stocks: tested, not adopted
+
+The owner asked for the model to buy individual companies, not only index funds. The question that decides it: does a rule for picking stocks beat simply holding the index, after costs?
+
+**Universe.** Testing on today's large companies only ever buys names already known to have won. So the universe is the S&P 500 as it stood on each date, from a public point-in-time record: 977 companies since 2005. Yahoo still has prices for 696 of them. Of each year's members, 59% have prices in 2007, 91% in 2021 and 98% in 2026. Renamed companies and the over-the-counter tickers of failed ones were restored where possible; what is missing is mostly companies that were bought out. This gap is the study's main weakness and it cuts both ways: bankruptcies are missing, and so are takeover targets, which are momentum winners.
+
+**Rules, fixed before running anything.** Twelve variants: classic 12-month momentum, the model's own Kalman trend probability, or momentum restricted to names in an uptrend; 10 or 20 names; with or without a market gate that leaves stocks while the index itself is in a downtrend. Monthly decisions from the previous close, a holding kept while it ranks in the top 2N, weights by inverse volatility capped at 2/N, 0.20% a side in costs (a commission-free broker). The bar for adoption was written into the script first: the best variant by design-sample Sharpe must beat the index fund's Sharpe by 0.10 and show an alpha with a t-statistic of 2.
+
+| 2007–2021 (design) | Return | Sharpe | Worst drawdown | Alpha (t) | Turnover | Costs |
+|---|---:|---:|---:|---:|---:|---:|
+| Index fund (SPY) | 10.6% | 0.60 | −55% | | | |
+| All members, equal weight, no costs | 12.1% | 0.62 | −58% | +0.6% (0.5) | 0.4× | |
+| Momentum, top 10 | 2.2% | 0.22 | −65% | −7.3% (−2.1) | 3.3× | 1.3% |
+| Trend probability, top 20, market gate (the best) | 5.7% | 0.43 | −34% | +0.7% (0.2) | 4.4× | 1.8% |
+
+Every one of the twelve trails the index fund. The rule is not adopted, and by the protocol that is final whatever came later. For the record, what came later:
+
+| 2022 – Nov 2026 (hold-out) | Return | Sharpe | Worst drawdown |
+|---|---:|---:|---:|
+| Index fund (SPY) | 11.5% | 0.71 | −24% |
+| The best rule from the design sample | 0.9% | 0.13 | −26% |
+| The same, at Kraken's Convert cost | −7.5% | −0.37 | −35% |
+
+An independent calculation (plain decile sorts, equal weight, no costs, a few lines of pandas rather than the simulator) agrees: the top momentum decile returned 7.7% a year against 11.4% for all eligible members, and the bottom decile 12.1%. The simulator is not the reason.
+
+Why it fails here: the 2008–09 reversal, when the winners of the commodity boom collapsed and the rebound belonged to the losers; concentrated baskets of volatile names; four to five times a year of turnover; and the buy-outs missing from the data.
+
+**The owner's own list.** Nvidia, Tesla, Apple, Alphabet, Microsoft, Amazon and Meta, each held only while in an uptrend, returned 25.5% a year since 2013 (Sharpe 1.05, worst drawdown −51%). That number proves nothing: the list was written in 2026 by someone who knows which seven companies won the decade.
+
+**Decision.** The model keeps buying companies the way that survived the test: through the index funds. The dashboard now shows what that means in euros for each of the largest ones. Code: `research/09_stocks_data.py`, `research/10_stock_sleeve.py`.
+
 ## Independent review
 
 Before the hold-out was opened, the code was given to OpenAI Codex (GPT-6 Astra, high reasoning effort, read-only) with instructions to find anything that would make the results untrustworthy, and a hard rule not to touch data after 2021. Sixteen findings.

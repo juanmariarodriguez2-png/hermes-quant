@@ -119,7 +119,11 @@ class KrakenClient:
         r = requests.post(SPOT + path, data=body, headers=headers, timeout=30)
         out = r.json()
         if out.get("error"):
-            raise KrakenError(f"{endpoint}: {','.join(out['error'])}")
+            message = f"{endpoint}: {','.join(out['error'])}"
+            for secret in (self._key, self._secret):           # Kraken does not echo them; if it ever did, they stop here
+                if secret:
+                    message = message.replace(secret, "[redacted]")
+            raise KrakenError(message)
         return out["result"]
 
     def balances(self) -> dict[str, float]:

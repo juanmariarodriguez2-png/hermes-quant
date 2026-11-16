@@ -307,6 +307,10 @@ es: {
  "corr.clean": "Ver sin limpiar", "corr.raw": "Ver limpia",
  "pf.eyebrow": "Cartera", "pf.title": "Lo que tiene y por qué",
  "pf.lede.paper": "Cuenta simulada con las mismas reglas, comisiones y mínimos que la real. El objetivo se recalcula cada semana; entre medias solo se opera si un peso se desvía lo suficiente como para compensar la comisión.",
+ "pf.lede.t212": "Cuenta real en Trading 212: acciones y fondos reales, todas las órdenes por API. El objetivo se recalcula cada semana; entre medias solo se opera si un peso se desvía lo suficiente como para compensar el coste.",
+ "pf.lede.t212demo": "Ensayo en la cuenta de práctica de Trading 212, con dinero ficticio: las mismas órdenes que irían a la cuenta real, por API y sin pasos a mano.",
+ "mode.t212demo": "Trading 212 · ensayo", "mode.t212live": "Trading 212 · real", "mode.t212dry": "Trading 212 · sin armar",
+ "alert.unavailable": "Mercados que el modelo quiere y que hoy no puede operar en este bróker: {l}. Su parte se queda en liquidez.",
  "pf.lede.live": "Cuenta real en Kraken. El objetivo se recalcula cada semana; entre medias solo se opera si un peso se desvía lo suficiente como para compensar la comisión.",
  "pf.positions": "Posiciones y objetivo", "pf.track": "Evolución en vivo", "pf.trackSub": "Desde el arranque, frente a comprar y mantener.",
  "col.value": "Valor", "col.weight": "Peso", "col.gap": "Diferencia",
@@ -425,6 +429,10 @@ en: {
  "corr.clean": "Show raw", "corr.raw": "Show cleaned",
  "pf.eyebrow": "Portfolio", "pf.title": "What it holds, and why",
  "pf.lede.paper": "A paper account with the same rules, fees and minimums as the real one. The target is recomputed weekly; in between, a trade only happens when a weight has drifted far enough to be worth the commission.",
+ "pf.lede.t212": "A real Trading 212 account: real shares and funds, every order by API. The target is recomputed weekly; in between, a trade only happens when a weight has drifted far enough to be worth the cost.",
+ "pf.lede.t212demo": "A rehearsal on Trading 212's practice account, with practice money: the same orders that would go to the real account, by API and with no manual step.",
+ "mode.t212demo": "Trading 212 · rehearsal", "mode.t212live": "Trading 212 · live", "mode.t212dry": "Trading 212 · not armed",
+ "alert.unavailable": "Markets the model wants and cannot trade at this broker today: {l}. Their share stays in cash.",
  "pf.lede.live": "A real Kraken account. The target is recomputed weekly; in between, a trade only happens when a weight has drifted far enough to be worth the commission.",
  "pf.positions": "Positions and target", "pf.track": "Live track record", "pf.trackSub": "Since launch, against buy and hold.",
  "col.value": "Value", "col.weight": "Weight", "col.gap": "Gap",
@@ -725,13 +733,17 @@ function renderLive() {
   if (!LIVE) return;
   const a = LIVE.account, m = LIVE.model, armed = a.mode === "live" && a.armed;
   const pill = $("#modePill"); pill.className = "pill " + (a.mode === "paper" ? "info" : armed ? "good" : "warn");
-  pill.lastElementChild.textContent = T(a.mode === "paper" ? "mode.paper" : armed ? "mode.live" : "mode.validate") + " · " + a.profile.toUpperCase();
+  const t212 = a.venue === "trading212", demo = t212 && a.venue_env === "demo";
+  pill.lastElementChild.textContent = T(a.mode === "paper" ? "mode.paper" : demo ? "mode.t212demo" : t212 ? (armed ? "mode.t212live" : "mode.t212dry") : armed ? "mode.live" : "mode.validate") + " · " + a.profile.toUpperCase();
+  if (demo) pill.className = "pill info";
   $("#stamp").textContent = T("updated") + " " + dateFmt(LIVE.meta.bar_date);
   const al = $("#alerts"), notes = [];
   if (a.halted) notes.push(["crit", T("alert.halted")]);
   if (LIVE.meta.data_outage) notes.push(["warn", T("alert.outage")]);
   else if ((LIVE.meta.stale_markets || []).length) notes.push(["warn", T("alert.stale", { m: LIVE.meta.stale_markets.join(", ") })]);
   if (a.flow_today) notes.push(["warn", T("alert.flow", { v: (a.flow_today > 0 ? "+" : "−") + eur(Math.abs(a.flow_today)) })]);
+  const missing = Object.entries(a.unavailable || {});
+  if (missing.length) notes.push(["warn", T("alert.unavailable", { l: missing.map(([k, why]) => `${k} (${why})`).join(" · ") })]);
   const unknown = Object.keys(a.unrecognised || {});
   if (unknown.length) notes.push(["warn", T("alert.unknown", { l: unknown.join(", ") })]);
   const byHand = a.manual_orders || [];
@@ -811,7 +823,7 @@ function renderLive() {
   renderHeat();
 
   /* portfolio */
-  $("#pfLede").textContent = T("pf.lede." + (a.mode === "live" ? "live" : "paper"));
+  $("#pfLede").textContent = T("pf.lede." + (a.mode !== "live" ? "paper" : a.venue === "trading212" ? (a.venue_env === "demo" ? "t212demo" : "t212") : "live"));
   const pt = $("#positions"); pt.replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("col.asset") }), h("th", { class: "r", text: T("col.value") }), h("th", { class: "r", text: T("col.weight") }), h("th", { class: "r", text: T("col.target") }), h("th", { class: "r", text: T("col.gap") }))));
   const pb = h("tbody");
   const pos = [...a.positions].sort((x, y) => y.target - x.target);

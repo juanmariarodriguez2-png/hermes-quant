@@ -11,6 +11,11 @@ on:
     - cron: "23 1 * * *"
     - cron: "53 2 * * *"
     - cron: "23 4 * * *"
+    # Two more on weekdays while the European and New York exchanges are both open. A real
+    # share can only be bought while its exchange is open, so this is when an account on
+    # Trading 212 trades. On Kraken these runs find the day's work done and only refresh the data.
+    - cron: "45 14 * * 1-5"
+    - cron: "20 15 * * 1-5"
   workflow_dispatch: {}
 
 # Nothing by default: each job below asks for exactly what it needs. These explicit
@@ -31,7 +36,11 @@ jobs:
     outputs:
       publish: ${{ steps.pages.outputs.publish }}
     steps:
+      # The branch as it is now, not as it was when this run was queued: a run that waited
+      # behind another one must start from the state that one saved.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.ref }}
 
       - uses: actions/setup-python@v7
         with:
@@ -53,6 +62,12 @@ jobs:
           # (it does not for accounts in the European Economic Area).
           HERMES_TOKENIZED_API: ${{ vars.HERMES_TOKENIZED_API || 'no' }}
           HERMES_FAVOURITES: ${{ vars.HERMES_FAVOURITES || 'no' }}
+          # kraken | trading212: where the live account trades. T212_ENV is demo (practice
+          # money) until the owner sets it to live.
+          HERMES_VENUE: ${{ vars.HERMES_VENUE || 'kraken' }}
+          T212_ENV: ${{ vars.T212_ENV || 'demo' }}
+          T212_API_KEY: ${{ secrets.T212_API_KEY }}
+          T212_API_SECRET: ${{ secrets.T212_API_SECRET }}
           KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
           KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

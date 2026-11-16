@@ -106,6 +106,32 @@ Si prefieres reiniciar del todo el contador de rentabilidad, crea la variable `H
 
 Si la cuenta cae un 25 % desde su máximo, el modelo vende todo, se queda en liquidez y avisa. No vuelve a operar hasta que alguien edite `data/live/state.json` y ponga `"halted": false`. Está pensado para que un fallo, del modelo o del mercado, no se convierta en una ruina.
 
+## Pasar a Trading 212: que el bot compre solo, sin pasos a mano
+
+En Kraken, una cuenta europea tiene que comprar a mano la bolsa, el oro y la plata, y cada compra cuesta alrededor de un 1 %. Trading 212 es un bróker regulado en la UE con acciones y fondos reales, sin comisión de compraventa, desde 1 €, y con una API por la que el bot envía todas las órdenes. El conector está hecho y probado contra un simulador; falta probarlo contra una cuenta de verdad, y eso empieza con dinero ficticio.
+
+**Lo que haces tú (una vez)**
+
+1. **Abre la cuenta** en trading212.com eligiendo **Invest** (no CFD) y verifica tu identidad.
+2. **Crea una clave de práctica.** En la app o la web cambia a la cuenta de **práctica** (dinero ficticio) y entra en *Ajustes → API (Beta) → Generar clave API*. Marca todos los permisos y copia la clave y el secreto. Esa API no tiene ninguna función para retirar dinero.
+3. **Guárdalos en GitHub**, nunca en un chat: *Settings → Secrets and variables → Actions → New repository secret*, uno llamado `T212_API_KEY` y otro `T212_API_SECRET`.
+4. **Lanza el ensayo:** *Actions → Trading 212 connection check → Run workflow*. No envía nada. Dice si la clave funciona, con qué instrumento operaría cada mercado, si su bolsa está abierta y qué hay en la cuenta. También busca las acciones españolas y europeas y los fondos de Japón y China, y dice cuáles ofrece tu cuenta.
+5. **Deja que opere con dinero ficticio:** crea la variable `HERMES_VENUE` con valor `trading212`. Desde ese momento el bot opera en la cuenta de práctica (la de Kraken se queda como está, sin tocar) y el panel lo muestra como «Trading 212 · ensayo».
+6. **Dinero real, cuando el ensayo te convenza:** ingresa dinero en Trading 212, crea una clave en la cuenta real, sustituye los dos secretos y crea la variable `T212_ENV` con valor `live`.
+
+**Cómo opera allí**
+
+- Cada mercado del modelo se compra a través del fondo europeo que sigue lo mismo, porque una cuenta europea no puede comprar los fondos estadounidenses: S&P 500 → iShares Core S&P 500 UCITS; Nasdaq 100 → iShares Nasdaq 100 UCITS; oro → iShares Physical Gold; plata → iShares Physical Silver. Las acciones de tu lista son las acciones reales en su bolsa. Las criptomonedas, mediante productos cotizados (ETP) si tu cuenta los ofrece; si no, esa parte se queda en liquidez. El mapa está en `config/trading212.json`.
+- Una acción solo se puede comprar con su bolsa abierta. Por eso hay dos ejecuciones más, de lunes a viernes a las 14:45 y 15:20 UTC (15:45 y 16:20 en España en invierno), cuando Europa y Nueva York están abiertas a la vez. La de madrugada sigue calculando; las órdenes salen por la tarde.
+- Las señales siguen saliendo de los mismos datos de siempre; lo que cambia es dónde se compra.
+- El dinero de Kraken no se mueve solo: para pasarlo hay que vender allí las cuatro posiciones, retirar los euros al banco e ingresarlos en Trading 212. Es el último paso a mano.
+
+**Lo que conviene saber**
+
+- La API de Trading 212 está en fase beta y puede cambiar. Para eso son el ensayo y la cuenta de práctica.
+- No ofrece las bolsas de Japón ni de China directamente; sí fondos cotizados en Europa que las siguen.
+- Para añadir acciones españolas o europeas a tu cesta hace falta, además, que el bot tenga su historial de precios. Es el paso siguiente una vez que el ensayo confirme que tu cuenta las ofrece.
+
 ## Acciones sueltas: la cesta de favoritas
 
 El modelo compra empresas a través de los fondos de índice, porque ninguna regla para elegir acciones ganó al índice cuando se probó (está en el panel y en `docs/RESEARCH.md`, paso 8). Si aun así quieres tener empresas concretas, hay una cesta aparte para eso. Está **apagada** hasta que la enciendas, y el panel enseña cada noche qué haría.

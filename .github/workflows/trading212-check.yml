@@ -1,0 +1,51 @@
+name: Trading 212 connection check
+
+# A rehearsal against the Trading 212 account, started by hand.
+#   * As it comes: read-only. It shows whether the key works, which of the model's markets
+#     this account really offers (and the Spanish, European, Japanese and Chinese ones the
+#     owner asked about), whether each exchange is open, and what the account holds.
+#   * With "trade_demo" ticked, and only on the practice account (T212_ENV=demo): it buys
+#     five euros of one market with practice money and sells it back, printing what the
+#     exchange answered. The script refuses to do this on a real-money account.
+# See hermes_quant/live/check_trading212.py.
+on:
+  workflow_dispatch:
+    inputs:
+      trade_demo:
+        description: "Practice account only: buy 5 euros of one market and sell it back"
+        type: boolean
+        default: false
+      price:
+        description: "Reference price in euros for that purchase (only if the run asks for it)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Rehearsal against Trading 212
+        env:
+          T212_API_KEY: ${{ secrets.T212_API_KEY }}
+          T212_API_SECRET: ${{ secrets.T212_API_SECRET }}
+          T212_ENV: ${{ vars.T212_ENV || 'demo' }}
+          TRADE_DEMO: ${{ inputs.trade_demo }}
+          PRICE: ${{ inputs.price }}
+        run: |
+          args=""
+          if [ "$TRADE_DEMO" = "true" ]; then args="--trade-demo"; fi
+          case "$PRICE" in ""|*[!0-9.]*) ;; *) args="$args --price $PRICE" ;; esac     # digits and a dot only
+          python -m hermes_quant.live.check_trading212 $args

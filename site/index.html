@@ -367,6 +367,8 @@ es: {
  "alert.halted": "Cortacircuitos activado: la cuenta cayó más de un 25 % desde su máximo y el modelo ha pasado todo a liquidez. No volverá a operar hasta que se revise.",
  "alert.outage": "Hoy faltan datos de mercado: el modelo no ha operado.", "alert.stale": "Sin datos hoy para {m}: esos mercados quedan congelados hasta mañana.",
  "nav.term": "Terminal en vivo",
+ "alert.flow": "Movimiento de {v} detectado en la cuenta sin que lo hiciera el modelo (un ingreso, una retirada o un activo que no reconoce). Se cuenta como dinero que entra o sale, no como ganancia ni pérdida.",
+ "alert.unknown": "En la cuenta hay activos que el modelo no gestiona y que no cuentan en su valor: {l}.",
  "alert.manual": "Órdenes pendientes de colocar a mano en kraken.com: {list}. Kraken no admite por API las acciones tokenizadas de cuentas europeas; el resto lo opera el modelo solo.", "man.buy": "comprar {v} de {s}", "man.sell": "vender {v} de {s}",
  "table": "Ver tabla", "chart": "Ver gráfico", "loading": "Cargando datos…", "nodata": "Datos no disponibles.",
 },
@@ -471,6 +473,8 @@ en: {
  "alert.halted": "Circuit breaker tripped: the account fell more than 25% from its peak and the model has moved everything to cash. It will not trade again until it is reviewed.",
  "alert.outage": "Market data is missing today: the model did not trade.", "alert.stale": "No data today for {m}: those markets are frozen until tomorrow.",
  "nav.term": "Live terminal",
+ "alert.flow": "A movement of {v} was detected in the account that the model did not make (a deposit, a withdrawal or an asset it does not recognise). It is counted as money in or out, not as profit or loss.",
+ "alert.unknown": "The account holds assets the model does not manage and leaves out of its value: {l}.",
  "alert.manual": "Orders waiting to be placed by hand on kraken.com: {list}. Kraken takes no tokenized-stock orders by API from European accounts; the model trades everything else by itself.", "man.buy": "buy {v} of {s}", "man.sell": "sell {v} of {s}",
  "table": "Show table", "chart": "Show chart", "loading": "Loading data…", "nodata": "Data not available.",
 }};
@@ -697,6 +701,9 @@ function renderLive() {
   if (a.halted) notes.push(["crit", T("alert.halted")]);
   if (LIVE.meta.data_outage) notes.push(["warn", T("alert.outage")]);
   else if ((LIVE.meta.stale_markets || []).length) notes.push(["warn", T("alert.stale", { m: LIVE.meta.stale_markets.join(", ") })]);
+  if (a.flow_today) notes.push(["warn", T("alert.flow", { v: (a.flow_today > 0 ? "+" : "−") + eur(Math.abs(a.flow_today)) })]);
+  const unknown = Object.keys(a.unrecognised || {});
+  if (unknown.length) notes.push(["warn", T("alert.unknown", { l: unknown.join(", ") })]);
   const byHand = a.manual_orders || [];
   if (byHand.length) notes.push(["accent", T("alert.manual", { list: byHand.map(o => T(o.notional_eur > 0 ? "man.buy" : "man.sell", { v: eur(Math.abs(o.notional_eur), 0), s: o.pair.slice(0, -3) })).join(" · ") })]);
   al.hidden = !notes.length;

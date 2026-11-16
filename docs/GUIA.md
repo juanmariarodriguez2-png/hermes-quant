@@ -98,7 +98,9 @@ Todas son órdenes límite con un tope del 0,5 % sobre el precio de referencia y
 
 ### Si ingresas o retiras dinero
 
-El modelo mide las caídas desde el máximo de la cuenta. Un retiro parecería una pérdida. Tras cualquier ingreso o retiro, crea la variable `HERMES_REBASE` con valor `yes`, deja pasar una ejecución y bórrala.
+No hay que hacer nada. En cada ejecución el modelo compara lo que la cuenta debería valer (lo que tenía ayer, a precios de hoy) con lo que vale. Si la diferencia es demasiado grande para ser comisiones (más de 5 € y del 3 %), la trata como dinero que ha entrado o salido: mueve con ella la base de la rentabilidad y el máximo de la cuenta, de modo que un ingreso no parece una ganancia ni una retirada una pérdida, y lo avisa en el panel. Lo mismo ocurre si compras con el dinero de la cuenta un activo que el modelo no gestiona: lo lista como «no reconocido» y no lo cuenta en el valor.
+
+Si prefieres reiniciar del todo el contador de rentabilidad, crea la variable `HERMES_REBASE` con valor `yes`, deja pasar una ejecución y bórrala.
 
 ### El cortacircuitos
 

@@ -167,6 +167,14 @@ class KrakenBroker:
                 out[symbol] = amount
         return out
 
+    def unrecognised(self) -> dict[str, float]:
+        """Balances the model has no market for (and so leaves out of the account value)."""
+        known = {(n + suffix).upper() for n in ("ZEUR", "EUR", "ZUSD", "USD") for suffix in SUFFIXES}
+        for symbol, inst in self.instruments.items():
+            names = (inst.kraken_pair[:-3], inst.kraken_pair[:-4] + "SPV") if inst.tokenized else _LEGACY.get(symbol, (symbol,))
+            known |= {(n + suffix).upper() for n in names for suffix in SUFFIXES}
+        return {k: v for k, v in self._balances.items() if v > 0 and k.upper() not in known}
+
     # ------------------------------------------------------------------ one order
     def _send(self, pair: str, side: str, volume: float, reference: float, tokenized: bool, dry: bool = False) -> dict:
         """Send one capped IOC limit order. Returns what really happened:

@@ -247,6 +247,7 @@ const I18N = {
   "j.run": "vela del {d} · modo {m} · perfil {p}", "j.data": "{n} mercados leídos de Kraken · {s} congelados", "j.dataBad": "faltan datos de mercado: hoy no se opera",
   "j.reg": "bolsa: {p} de probabilidad de turbulencia → exposición a acciones ×{x}", "j.risk": "volatilidad prevista {v} (objetivo {t}) · {k} de {n} factores de correlación son reales, el resto es ruido",
   "j.sig": "{s}: tendencia {p} → objetivo {w}", "j.sigNone": "{s}: tendencia {p} → sin posición", "j.crypto": "cripto: ninguna de las {n} elegibles tiene tendencia alcista ({l}) → 0 %",
+  "j.flow": "movimiento externo de {v}: tratado como dinero que entra o sale, no como ganancia ni pérdida", "j.unknown": "activos en la cuenta que el modelo no gestiona: {l}",
   "j.noOrd": "ninguna orden por API en esta ejecución", "j.ord": "{v} {s}: {e} ({st})", "j.hand": "{v} {e} de {s} · pendiente", "j.halt": "cortacircuitos activado: cartera en liquidez",
   "j.end": "valor de la cuenta {v} · {i} invertido · próxima ejecución a las {t} UTC", "v.buy": "compra", "v.sell": "venta",
   "b.px": "Precio", "b.qty": "Cantidad", "b.ask": "venta", "b.bid": "compra", spread: "diferencial", "b.time": "Hora", wait: "Esperando datos…", cmd: "BTC, SPY, oro…" },
@@ -272,6 +273,7 @@ const I18N = {
   "j.run": "candle of {d} · mode {m} · profile {p}", "j.data": "{n} markets read from Kraken · {s} frozen", "j.dataBad": "market data missing: no trading today",
   "j.reg": "equities: {p} turbulence probability → equity exposure ×{x}", "j.risk": "predicted volatility {v} (target {t}) · {k} of {n} correlation factors are real, the rest is noise",
   "j.sig": "{s}: trend {p} → target {w}", "j.sigNone": "{s}: trend {p} → no position", "j.crypto": "crypto: none of the {n} eligible has an uptrend ({l}) → 0%",
+  "j.flow": "external movement of {v}: counted as money in or out, not as profit or loss", "j.unknown": "assets in the account the model does not manage: {l}",
   "j.noOrd": "no order sent by API in this run", "j.ord": "{v} {s}: {e} ({st})", "j.hand": "{v} {e} of {s} · pending", "j.halt": "circuit breaker tripped: portfolio in cash",
   "j.end": "account value {v} · {i} invested · next run at {t} UTC", "v.buy": "buy", "v.sell": "sell",
   "b.px": "Price", "b.qty": "Size", "b.ask": "ask", "b.bid": "bid", spread: "spread", "b.time": "Time", wait: "Waiting for data…", cmd: "BTC, SPY, gold…" } };
@@ -588,6 +590,8 @@ function buildLog() {
   if (on.length) for (const x of cr) add("sig", T(x.target > 0.0005 ? "j.sig" : "j.sigNone", { s: x.symbol, p: pct(x.prob_up, 0), w: pct(x.target, 1) }));
   else if (cr.length) add("sig", T("j.crypto", { n: String(cr.length), l: cr.map(x => `${x.symbol} ${pct(x.prob_up, 0)}`).join(", ") }));
   if (a.halted) add("warn", T("j.halt"), true);
+  if (a.flow_today) add("warn", T("j.flow", { v: (a.flow_today > 0 ? "+" : "−") + eur(Math.abs(a.flow_today)) }), true);
+  if (Object.keys(a.unrecognised || {}).length) add("warn", T("j.unknown", { l: Object.keys(a.unrecognised).join(", ") }), true);
   const sent = a.orders_today || [];
   if (!sent.length) add("ord", T("j.noOrd"));
   for (const o of sent) add("ord", T("j.ord", { v: T(o.notional_eur >= 0 ? "v.buy" : "v.sell"), s: o.symbol, e: eur(Math.abs(o.notional_eur)), st: o.status }), true);

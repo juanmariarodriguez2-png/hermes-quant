@@ -458,3 +458,67 @@ def test_tokenized_holdings_are_found_under_the_names_kraken_really_uses():
     b = KrakenBroker(ex, LIVE_BY_SYMBOL, pair_rules=RULES, pause=0.0)
     assert b.units() == {"ETH": 1.4409e-06, "SPY": 0.048593, "QQQ": 0.02303, "GLD": 0.17549, "SLV": 0.205367}
     assert b.cash() == pytest.approx(121.4709) and b.usd_cash() == 0.0
+
+
+# ----------------------------------------------------------------------------- money that moves without the model
+
+
+def _restricted_live(sandbox, monkeypatch, balances):
+    monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.delenv("HERMES_TOKENIZED_API", raising=False)
+    rules = {i.kraken_pair: {"price_decimals": 2, "lot_decimals": 8, "ordermin": 1e-8, "costmin": 0.5} for i in LIVE_INSTRUMENTS}
+    rules["EURUSD"] = RULES["EURUSD"]
+    ex = RefusesTokenized(balances)
+    broker_ = KrakenBroker(ex, LIVE_BY_SYMBOL, pair_rules=rules, armed=True, pause=0.0, tokenized_via_api=False)
+    return ex, broker_, dict(mode="live", offline=True, live_dir=sandbox / "live", site_dir=sandbox / "site")
+
+
+def test_money_moved_without_the_model_is_a_flow_not_a_loss(sandbox, monkeypatch):
+    ex, b, kw = _restricted_live(sandbox, monkeypatch, {"ZEUR": 233.47})
+    first = run_daily.run(now=MONDAY, broker=b, **kw)["account"]
+    assert first["flow_today"] == 0.0 and first["unrecognised"] == {}
+
+    ex.bal["ZEUR"] -= 112.0                                          # half the cash buys something the model has no market for
+    ex.bal["PEPE"] = 5e6
+    b.refresh()
+    a = run_daily.run(now=datetime(2026, 11, 17, 1, 25, tzinfo=timezone.utc), broker=b, **kw)["account"]
+    assert a["flow_today"] == pytest.approx(-112.0, abs=0.01)
+    assert not a["halted"]                                           # a 48% "fall" that is not a loss
+    assert a["initial_capital"] == pytest.approx(121.47, abs=0.01)
+    assert a["return_since_inception"] == pytest.approx(0.0, abs=1e-6) and a["drawdown"] == pytest.approx(0.0, abs=1e-6)
+    assert a["unrecognised"] == {"PEPE": 5e6}
+
+    ex.bal["ZEUR"] += 500.0                                          # and a deposit is no profit
+    b.refresh()
+    a = run_daily.run(now=datetime(2026, 11, 18, 1, 25, tzinfo=timezone.utc), broker=b, **kw)["account"]
+    assert a["flow_today"] == pytest.approx(500.0, abs=0.01)
+    assert a["return_since_inception"] == pytest.approx(0.0, abs=1e-6)
+    assert [f["eur"] for f in a["flows"]] == [-112.0, 500.0]
+
+
+def test_buying_the_listed_funds_by_hand_is_seen_as_holdings_and_costs_not_as_a_flow(sandbox, monkeypatch):
+    ex, b, kw = _restricted_live(sandbox, monkeypatch, {"ZEUR": 233.47})
+    asked = {o["symbol"]: o["notional_eur"] for o in run_daily.run(now=MONDAY, broker=b, **kw)["account"]["manual_orders"]}
+    state = json.loads((sandbox / "live" / "state.json").read_text())
+    live = json.loads((sandbox / "site" / "live.json").read_text())
+    price = {p["symbol"]: p["price"] for p in live["account"]["positions"]}
+    for symbol, euros in asked.items():                              # the owner places them, paying a 1% margin
+        ex.bal["ZEUR"] -= euros
+        ex.bal[LIVE_BY_SYMBOL[symbol].kraken_pair[:-3] + ".T"] = euros / (price[symbol] * 1.01)
+    b.refresh()
+    a = run_daily.run(now=datetime(2026, 11, 17, 1, 25, tzinfo=timezone.utc), broker=b, **kw)["account"]
+    assert a["flow_today"] == 0.0 and not a["halted"]
+    assert {p["symbol"] for p in a["positions"] if p["value"] > 0.01} == set(asked)
+    assert a["nav"] == pytest.approx(233.47 - 0.01 * sum(asked.values()), rel=2e-3)     # the margin is the only thing lost
+    assert state["initial_capital"] == pytest.approx(233.47) == pytest.approx(a["initial_capital"])
+
+
+def test_a_real_fall_still_trips_the_breaker_in_live_mode(sandbox, monkeypatch):
+    ex, b, kw = _restricted_live(sandbox, monkeypatch, {"ZEUR": 233.47})
+    run_daily.run(now=MONDAY, broker=b, **kw)
+    path = sandbox / "live" / "state.json"
+    state = json.loads(path.read_text())
+    state["peak_nav"] = state["nav"] * 1.5                           # the account has fallen by a third, holdings unchanged
+    path.write_text(json.dumps(state))
+    a = run_daily.run(now=datetime(2026, 11, 17, 1, 25, tzinfo=timezone.utc), broker=b, **kw)["account"]
+    assert a["flow_today"] == 0.0 and a["halted"]

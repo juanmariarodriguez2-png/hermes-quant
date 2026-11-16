@@ -20,6 +20,9 @@ Built to fail safe
   rate or a third of the markets are missing, nothing trades at all.
 * A 25% fall from the account's peak trips a circuit breaker: everything is sold
   and the system stays in cash until a human clears ``halted`` in state.json.
+* Money that moves without the model (a deposit, a withdrawal, something bought that
+  the model cannot see) is recognised as a flow: the performance base and the peak
+  move with it, so it neither flatters the return nor trips the circuit breaker.
 
 Environment
 -----------
@@ -67,6 +70,7 @@ SITE = ROOT / "site"
 MAX_DRAWDOWN_HALT = 0.25        # circuit breaker: stop and go to cash after a 25% fall from the peak
 OUTAGE_SHARE = 1.0 / 3.0        # this share of markets without data = do not trade today
 NEW_YORK = ZoneInfo("America/New_York")
+FLOW_MIN_EUR, FLOW_SHARE = 5.0, 0.03   # an unexplained change in account value above both is money moved, not P&L
 SCHEDULE_UTC = "01:23"          # when the nightly workflow runs; a test keeps it equal to the workflow's cron
 
 
@@ -201,6 +205,25 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         # a real account starts from whatever it holds; so does one that was topped up
         state.update(initial_capital=nav, peak_nav=nav, benchmarks={}, inception=now.strftime("%Y-%m-%d"))
 
+    # What the account should be worth if nothing but prices had moved since the last
+    # run: yesterday's holdings at today's prices. A gap too large to be trading costs
+    # is money that came in or went out, or an asset the model cannot see.
+    flow = 0.0
+    if mode == "live" and state.get("mode") == "live" and not is_new and not outage:
+        held_before = state.get("units") or {}
+        expected = float(state.get("cash") or 0.0) + float(np.nansum([held_before.get(s, 0.0) * prices.get(s, np.nan) for s in symbols]))
+        gap = nav - expected
+        if abs(gap) > max(FLOW_MIN_EUR, FLOW_SHARE * max(expected, nav)):
+            flow = gap
+            base = float(state["initial_capital"]) + flow
+            if base > 1.0:
+                state["initial_capital"] = base
+                state["peak_nav"] = max(1.0, float(state.get("peak_nav") or nav) + flow)
+            else:                                         # more was taken out than was ever put in: start afresh
+                state.update(initial_capital=nav, peak_nav=nav, benchmarks={}, inception=now.strftime("%Y-%m-%d"))
+            state["flows"] = (state.get("flows") or [])[-19:] + [{"bar": bar, "eur": round(flow, 2)}]
+    unrecognised = broker.unrecognised() if hasattr(broker, "unrecognised") else {}
+
     state["peak_nav"] = max(float(state.get("peak_nav") or nav), nav)
     drawdown = nav / state["peak_nav"] - 1.0
     if drawdown <= -MAX_DRAWDOWN_HALT and not state["halted"] and not outage:
@@ -279,7 +302,8 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         "next_target_refresh_in_days": max(0, rules.rebalance_every - (0 if refreshed else (age or 0))),
         "positions": positions, "equity": equity.to_dict(orient="records"),
         "trades": done.tail(40).to_dict(orient="records") if len(done) else [],
-        "orders_today": [f.as_dict() for f in fills], "manual_orders": manual_orders}
+        "orders_today": [f.as_dict() for f in fills], "manual_orders": manual_orders,
+        "flow_today": flow, "flows": state.get("flows") or [], "unrecognised": unrecognised}
     out = {"meta": {"generated_at": state["last_run"], "bar_date": bar, "version": __version__,
                     "data_errors": data_errors, "stale_markets": stale, "data_outage": bool(outage),
                     "price_source": "kraken", "schedule_utc": SCHEDULE_UTC},
@@ -306,6 +330,11 @@ def main() -> None:
     for o in a["manual_orders"]:
         print(f"   BY HAND   {o['symbol']:6s} {o['notional_eur']:+9.2f} EUR  {'buy' if o['notional_eur'] > 0 else 'sell'} "
               f"{o['pair'][:-3]} on kraken.com" + ("" if o["market_open"] else "  (its market is closed right now)"))
+    if a["flow_today"]:
+        print(f"   EXTERNAL FLOW {a['flow_today']:+.2f} EUR: money moved without the model (deposit, withdrawal or an asset "
+              "it cannot see). Treated as a flow, not as profit or loss.")
+    if a["unrecognised"]:
+        print("   NOT RECOGNISED at the exchange (left out of the account value):", ", ".join(f"{k}={v:.6g}" for k, v in a["unrecognised"].items()))
     if meta["data_errors"] or meta["stale_markets"]:
         print("   data problems:", meta["data_errors"], "stale:", meta["stale_markets"],
               "-> NO TRADING TODAY" if meta["data_outage"] else "-> those markets frozen for today")

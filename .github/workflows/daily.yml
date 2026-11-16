@@ -65,7 +65,14 @@ jobs:
           git config user.email "hermes-bot@users.noreply.github.com"
           git add data/live site/live.json
           git diff --cached --quiet || git commit -m "daily run $(date -u +%F)"
-          git push
+          # Someone may have pushed while the model ran: put the state on top of it and try again.
+          pushed=no
+          for attempt in 1 2 3 4; do
+            if git push; then pushed=yes; break; fi
+            git pull --rebase origin "$GITHUB_REF_NAME" || git rebase --abort || true
+            sleep $((attempt * 4))
+          done
+          [ "$pushed" = yes ]
 
       # The dashboard is served by GitHub Pages (free on public repositories) once it is
       # switched on: Settings > Pages > Source: GitHub Actions. Until then it is skipped

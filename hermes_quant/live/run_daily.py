@@ -40,6 +40,13 @@ HERMES_TOKENIZED_API     "yes" if Kraken accepts tokenized-stock orders by API f
                          listed for the owner to place by hand on kraken.com
 HERMES_REBASE            "yes" once after a deposit or withdrawal: restart the
                          performance and drawdown clock from today's value
+HERMES_VENUE             kraken | trading212: where a live account trades   (default kraken)
+                         On Trading 212 every order goes by API (real shares, and European
+                         funds standing in for the US ones); nothing is left to place by hand.
+                         Its record is kept apart, under data/live/trading212/.
+T212_API_KEY/SECRET      only for HERMES_VENUE=trading212. The key cannot withdraw money:
+                         Trading 212's API has no such call
+T212_ENV                 demo | live: practice money or real money              (default demo)
 HERMES_FAVOURITES        "yes" to let the basket of single stocks in config/favourites.json
                          into the target (default "no": the stocks are scored and shown,
                          and one the owner bought himself is valued, but none is traded)
@@ -61,11 +68,13 @@ import pandas as pd
 
 from .. import __version__
 from ..data import kraken
+from ..data.trading212 import Trading212Client
 from ..model import PROFILES, compute_features, target_weights
 from ..portfolio.execution import CostModel, TradingRules, plan_orders
 from ..report.snapshot import NAMES, model_snapshot
 from ..universe import LIVE_INSTRUMENTS, STOCK_RADAR, Instrument
 from . import favourites, monitors, notify
+from . import trading212 as t212
 from .brokers import KrakenBroker, PaperBroker
 from .market import FX_SYMBOL, PriceStore, build_live_panel, live_regime, refresh_prices
 
@@ -137,12 +146,19 @@ def current_prices(instruments: list[Instrument], last_close: pd.Series, fx_clos
 
 def run(mode: str | None = None, profile: str | None = None, offline: bool = False,
         live_dir: Path = LIVE, site_dir: Path = SITE, broker=None, now: datetime | None = None,
-        basket: favourites.Basket | None = None) -> dict:
+        basket: favourites.Basket | None = None, venue=None) -> dict:
     mode = mode or os.environ.get("HERMES_MODE", "paper")
     profile = profile or os.environ.get("HERMES_PROFILE", "balanced")
     cfg, rules, costs = PROFILES[profile], TradingRules(), CostModel()
     now = now or _now()
     live_dir.mkdir(parents=True, exist_ok=True)
+    # Where a live account trades. Each venue is a different account, so each keeps its own
+    # record (state, equity, trades); the price store is shared.
+    venue_name = (getattr(venue, "name", None) or os.environ.get("HERMES_VENUE", "kraken")) if mode == "live" else "kraken"
+    if venue_name not in ("kraken", "trading212"):
+        raise ValueError(f"HERMES_VENUE must be kraken or trading212, not {venue_name!r}")
+    book_dir = live_dir if venue_name == "kraken" else live_dir / venue_name
+    book_dir.mkdir(parents=True, exist_ok=True)
 
     # The owner's list of single stocks. A list that cannot be read is reported and
     # ignored: it must never stand between the model and its orders.
@@ -180,7 +196,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     outage = fx_stale or len(stale) > OUTAGE_SHARE * len(core)
 
     # 3. target -----------------------------------------------------------------------
-    state_path = live_dir / "state.json"
+    state_path = book_dir / "state.json"
     state = load_state(state_path, float(os.environ.get("HERMES_CAPITAL", "233.47")), profile, mode)
     allocation = target_weights(features, cfg, t)
 
@@ -237,22 +253,38 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     # 4. account, risk checks, orders ---------------------------------------------------
     last_close = panel.close.ffill().iloc[t]                # a missing candle must not zero a holding
     last_close = pd.concat([last_close, pd.Series(stock_close, dtype=float)])
-    prices, eurusd = current_prices(instruments + [by_symbol[s] for s in symbols[len(core):]], last_close,
-                                    panel.eurusd.ffill().iloc[t], now, offline)
     armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
+    max_order = float(os.environ.get("HERMES_MAX_ORDER_EUR", "100"))
+    if venue is None and broker is None and venue_name == "trading212":
+        client = Trading212Client(os.environ["T212_API_KEY"], os.environ["T212_API_SECRET"], env=os.environ.get("T212_ENV", "demo"))
+        venue = t212.Venue(client, armed=armed, max_order_eur=max_order)
+    on_venue = venue is not None                            # Trading 212: its own instruments, prices and hours
+    if on_venue:
+        broker = venue.broker
     # Kraken takes no tokenized-stock orders by API from accounts in the European Economic
     # Area: there the model sends none of them and lists them for the owner instead.
     tokenized_api = os.environ.get("HERMES_TOKENIZED_API", "no") == "yes"
-    by_hand = np.array([mode == "live" and by_symbol[s].tokenized and not tokenized_api for s in symbols])
+    by_hand = np.array([mode == "live" and not on_venue and by_symbol[s].tokenized and not tokenized_api for s in symbols])
     if broker is None:
         if mode == "live":
             client = kraken.KrakenClient(os.environ["KRAKEN_API_KEY"], os.environ["KRAKEN_API_SECRET"])
             pair_rules = {**kraken.pair_rules(False), **kraken.pair_rules(True)}
-            broker = KrakenBroker(client, by_symbol, pair_rules=pair_rules, armed=armed,
-                                  max_order_eur=float(os.environ.get("HERMES_MAX_ORDER_EUR", "100")),
+            broker = KrakenBroker(client, by_symbol, pair_rules=pair_rules, armed=armed, max_order_eur=max_order,
                                   tokenized_via_api=tokenized_api)
         else:
             broker = PaperBroker(state["cash"], state["units"])
+
+    # Prices. On Kraken the model's own series are what is traded. On Trading 212 a market is
+    # traded through a different instrument (a European fund, a real share) with its own
+    # price per share: the account says what its holdings are worth, a reference source the rest.
+    quoted_here = [] if on_venue else instruments + [by_symbol[s] for s in symbols[len(core):]]
+    prices, eurusd = current_prices(quoted_here, last_close, panel.eurusd.ffill().iloc[t], now, offline)
+    price_gaps: dict[str, str] = {}
+    if on_venue:
+        prices, price_gaps = venue.prices(symbols, eurusd)
+
+    def is_open(symbol: str) -> bool:
+        return venue.open(symbol, now) if on_venue else market_open(by_symbol[symbol], now)
 
     def account() -> tuple[dict, float, np.ndarray, float]:
         units = broker.units()
@@ -285,6 +317,8 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
                 state.update(initial_capital=nav, peak_nav=nav, benchmarks={}, inception=now.strftime("%Y-%m-%d"))
             state["flows"] = (state.get("flows") or [])[-19:] + [{"bar": bar, "eur": round(flow, 2)}]
     unrecognised = broker.unrecognised() if hasattr(broker, "unrecognised") else {}
+    if on_venue:                                            # a holding the venue knows but this run does not follow
+        unrecognised.update({venue.listings[s].ticker: q for s, q in units.items() if s not in symbols})
 
     state["peak_nav"] = max(float(state.get("peak_nav") or nav), nav)
     drawdown = nav / state["peak_nav"] - 1.0
@@ -295,12 +329,21 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
 
     already_ran = state.get("last_bar") == bar
     frozen = set(stale) | set(stock_stale)
-    tradable = managed & np.array([market_open(by_symbol[s], now) and s not in frozen and np.isfinite(prices.get(s, np.nan))
-                                   for s in symbols])
-    if already_ran or outage:
+    # One round of orders per market per daily candle. The round is used up only by a run
+    # in which that market could trade: a run that finds an exchange shut (at night, on a
+    # weekend) leaves its markets for a later run on the same candle.
+    done = dict(state.get("traded") or {}) if already_ran else {}
+    if already_ran and "traded" not in state:               # a state file from before this bookkeeping
+        done = {s: bar for s in symbols}
+    fresh = np.array([done.get(s) != bar for s in symbols])
+    tradable = managed & fresh & np.array([is_open(s) and s not in frozen and np.isfinite(prices.get(s, np.nan))
+                                           for s in symbols])
+    if outage:
         orders = np.zeros(len(symbols))
     else:
         orders = plan_orders(target, value, cash, tradable & ~by_hand, classes, costs, rules)
+        done.update({s: bar for s, ok in zip(symbols, tradable & ~by_hand) if ok})
+    state["traded"] = {s: b for s, b in done.items() if b == bar}
     order_map = {s: float(o) for s, o in zip(symbols, orders) if o != 0}
     fills = []
     if order_map:
@@ -318,20 +361,23 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         quoted = managed & np.array([s not in frozen and np.isfinite(prices.get(s, np.nan)) for s in symbols])
         pending = plan_orders(target, value, cash, by_hand & quoted, classes, costs, rules)
         manual_orders = [{"symbol": s, "name": names.get(s, s), "class": class_of[s], "notional_eur": float(n),
-                          "pair": by_symbol[s].kraken_pair, "market_open": bool(market_open(by_symbol[s], now))}
+                          "pair": by_symbol[s].kraken_pair, "market_open": bool(is_open(s))}
                          for s, n in zip(symbols, pending) if n != 0]
 
     # 5. persist ----------------------------------------------------------------------
+    # "What if the money had simply been left in bitcoin, or in the S&P 500": on a venue that
+    # trades a market through another instrument, that is measured on the model's own series.
+    level = {s: float(v) for s, v in last_close.items() if np.isfinite(v)} if on_venue else prices
     for key, symbol in (("btc", "BTC"), ("spx", "SPY")):
-        if symbol in prices and key not in state["benchmarks"]:
-            state["benchmarks"][key] = prices[symbol]
-    bench = {key: state["initial_capital"] * prices[sym] / state["benchmarks"][key]
-             for key, sym in (("btc", "BTC"), ("spx", "SPY")) if key in state["benchmarks"] and sym in prices}
+        if symbol in level and key not in state["benchmarks"]:
+            state["benchmarks"][key] = level[symbol]
+    bench = {key: state["initial_capital"] * level[sym] / state["benchmarks"][key]
+             for key, sym in (("btc", "BTC"), ("spx", "SPY")) if key in state["benchmarks"] and sym in level}
     state.update(cash=cash, units=units, mode=mode, last_bar=bar, runs=int(state.get("runs", 0)) + (0 if already_ran else 1),
                  last_run=now.strftime("%Y-%m-%dT%H:%M:%SZ"), nav=nav)
     state_path.write_text(json.dumps(state, indent=2))
 
-    equity_path = live_dir / "equity.csv"
+    equity_path = book_dir / "equity.csv"
     row = {"date": bar, "nav": round(nav, 4), "cash": round(cash, 4), "invested": round(float(value.sum()), 4),
            "btc_hold": round(bench.get("btc", np.nan), 4), "spx_hold": round(bench.get("spx", np.nan), 4),
            "positions": int(np.sum(value > 0.01))}
@@ -339,7 +385,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     equity = pd.concat([equity[equity["date"] != bar], pd.DataFrame([row])], ignore_index=True)
     equity.to_csv(equity_path, index=False)
 
-    trades_path = live_dir / "trades.csv"
+    trades_path = book_dir / "trades.csv"
     trades = pd.read_csv(trades_path) if trades_path.exists() else pd.DataFrame()
     if fills:
         new = pd.DataFrame([{"time": state["last_run"], "bar": bar, "mode": mode, **f.as_dict()} for f in fills])
@@ -352,7 +398,10 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         row.update(pair=inst.kraken_pair, quote=inst.quote, tokenized=inst.tokenized)
     positions = [{"symbol": s, "name": names.get(s, s), "class": class_of[s], "units": units.get(s, 0.0),
                   "price": prices.get(s), "value": float(v), "weight": float(v / nav) if nav else 0.0,
-                  "target": float(wanted.get(s, 0.0)), "managed": bool(m)}
+                  "target": float(wanted.get(s, 0.0)), "managed": bool(m),
+                  # on a venue, the instrument held (and whether Kraken's live feed still prices the holding)
+                  "instrument": venue.listings[s].ticker if on_venue and s in venue.listings else by_symbol[s].kraken_pair,
+                  "live_feed": not on_venue}
                  for s, v, m in zip(symbols, value, managed) if v > 0.01 or wanted.get(s, 0.0) > 0]
     held_value = dict(zip(symbols, value))
     basket_view = {"enabled": basket_on, "error": basket_error, "rows": []}
@@ -368,8 +417,17 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
                            target_total=float(sum(r["target"] for r in rows)),
                            invested=float(sum(r["value"] for r in rows) / nav) if nav else 0.0)
     done = trades[trades["status"].isin(["filled", "partial"])] if len(trades) else trades
+    # markets the model wants that this venue cannot trade today, and why
+    unavailable = {}
+    if on_venue:
+        for s in symbols:
+            if wanted.get(s, 0.0) > 0 and s not in venue.listings:
+                unavailable[s] = venue.problems.get(s, "not listed on Trading 212")
+            elif wanted.get(s, 0.0) > 0 and s in price_gaps:
+                unavailable[s] = price_gaps[s]
     account_view = {
         "mode": mode, "armed": armed, "profile": profile, "inception": state["inception"],
+        "venue": venue_name if mode == "live" else "paper", "venue_env": getattr(venue, "env", None), "unavailable": unavailable,
         "initial_capital": state["initial_capital"], "nav": nav, "cash": cash,
         "invested_pct": float(value.sum() / nav) if nav else 0.0,
         "return_since_inception": nav / state["initial_capital"] - 1.0, "peak_nav": state["peak_nav"],
@@ -388,7 +446,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
            "derivatives": [] if offline else monitors.derivatives_monitor()}
     site_dir.mkdir(parents=True, exist_ok=True)
     (site_dir / "live.json").write_text(json.dumps(out, default=float))
-    (live_dir / "latest.json").write_text(json.dumps(
+    (book_dir / "latest.json").write_text(json.dumps(
         {"meta": out["meta"], "account": {k: v for k, v in account_view.items() if k not in ("equity", "trades")},
          "targets": wanted}, indent=2, default=float))
     notify.send(notify.daily_message(out))
@@ -403,6 +461,10 @@ def main() -> None:
           f"invested {a['invested_pct']:.0%}, {len(a['orders_today'])} order(s)")
     for f in a["orders_today"]:
         print(f"   {f['status']:9s} {f['symbol']:6s} {f['notional_eur']:+9.2f} EUR at {f['price_eur']:.6g}  cost {f['cost_eur']:.3f}  {f['detail']}")
+    if a["venue"] == "trading212":
+        print(f"   VENUE     Trading 212 ({a['venue_env']}): every order goes by API, nothing to place by hand")
+    for s, why in a["unavailable"].items():
+        print(f"   NOT TRADED here: {s}: {why}")
     for o in a["manual_orders"]:
         print(f"   BY HAND   {o['symbol']:6s} {o['notional_eur']:+9.2f} EUR  {'buy' if o['notional_eur'] > 0 else 'sell'} "
               f"{o['pair'][:-3]} on kraken.com" + ("" if o["market_open"] else "  (its market is closed right now)"))

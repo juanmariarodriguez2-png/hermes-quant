@@ -11,6 +11,7 @@ import requests
 # Separate names keep unrelated endpoints from needlessly delaying one another.
 SPACING = {"summary": 5.0, "positions": 1.0, "instruments": 50.0, "exchanges": 30.0,
            "pending": 5.0, "order": 1.0, "history": 3.0, "market": 1.2, "cancel": 1.2}
+MAX_RATE_WAIT = 60.0      # seconds: the longest the client will sit out a rate limit before trying again
 PATHS = {"/equity/account/summary": "summary", "/equity/positions": "positions",
          "/equity/metadata/instruments": "instruments", "/equity/metadata/exchanges": "exchanges",
          "/equity/orders": "pending", "/equity/history/orders": "history", "/equity/orders/market": "market"}
@@ -80,7 +81,8 @@ class Trading212Client:
                         delay = float(response.headers.get("x-ratelimit-reset", "0")) - time.time()
                     except (ValueError, TypeError):
                         delay = 0
-                    self._sleep(delay if math.isfinite(delay) and delay > 0 else SPACING[endpoint])
+                    # a reset far in the future (a clock that disagrees with ours) must not hang the run
+                    self._sleep(min(delay, MAX_RATE_WAIT) if math.isfinite(delay) and delay > 0 else SPACING[endpoint])
                 else:
                     self._sleep(0.5 * (attempt + 1))
                 continue

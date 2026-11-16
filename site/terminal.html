@@ -235,6 +235,7 @@ const I18N = {
   log: "Registro del bot", book: "Libro y cinta", depth: "Profundidad · venta arriba, compra abajo", prints: "Últimas operaciones del mercado",
   foot: "Precios, velas, libro y operaciones: canal público de Kraken, en tiempo real. Señales, cuenta y registro: última ejecución del modelo, que decide una vez al día, de madrugada. Un modelo sistemático que opera poco no produce un goteo de órdenes: lo que se mueve aquí es el mercado; lo que cambia cada noche es la decisión. Rentabilidades pasadas no garantizan futuras. Esto no es asesoramiento financiero.",
   "mode.paper": "Simulado", "mode.live": "Real · armado", "mode.validate": "Real · validación",
+  "mode.t212demo": "Trading 212 · ensayo", "mode.t212live": "Trading 212 · real", "mode.t212dry": "Trading 212 · sin armar",
   "feed.live": "En vivo · Kraken", "feed.wait": "Conectando…", "feed.down": "Sin conexión en vivo",
   "g.equity": "Bolsa", "g.real": "Activos reales", "g.crypto": "Criptomonedas", "g.stock": "Sus acciones",
   "st.favHold": "En su cesta de acciones: tendencia alcista.", "st.favEnter": "Entra en la cesta en la próxima revisión semanal.", "st.favWould": "Entraría hoy en la cesta de acciones, que está apagada.",
@@ -265,6 +266,7 @@ const I18N = {
   log: "Bot log", book: "Book and tape", depth: "Depth · asks above, bids below", prints: "Latest market trades",
   foot: "Prices, candles, book and trades: Kraken's public feed, in real time. Signals, account and log: the model's last run; it decides once a day, overnight. A systematic model that trades rarely does not produce a stream of orders: what moves here is the market; what changes each night is the decision. Past returns do not guarantee future ones. This is not financial advice.",
   "mode.paper": "Paper", "mode.live": "Live · armed", "mode.validate": "Live · validate only",
+  "mode.t212demo": "Trading 212 · rehearsal", "mode.t212live": "Trading 212 · live", "mode.t212dry": "Trading 212 · not armed",
   "feed.live": "Live · Kraken", "feed.wait": "Connecting…", "feed.down": "No live connection",
   "g.equity": "Equities", "g.real": "Real assets", "g.crypto": "Crypto", "g.stock": "Your stocks",
   "st.favHold": "In your stock basket: uptrend.", "st.favEnter": "Joins the basket at the next weekly review.", "st.favWould": "Would join the stock basket today; the basket is switched off.",
@@ -591,7 +593,8 @@ function renderModel() {
 }
 
 /* ------------------------------------------------------------------ account */
-function liveValue(p) { const m = M.get(p.symbol); let price = p.price; if (m && m.last > 0) { if (m.quote !== "USD") price = m.last; else if (eurusd > 0) price = m.last / eurusd; } return p.units * (price || 0); }
+function liveValue(p) { const m = M.get(p.symbol); let price = p.price;
+  if (p.live_feed === false) return p.value;      /* held through another instrument (Trading 212): Kraken's feed does not price it */ if (m && m.last > 0) { if (m.quote !== "USD") price = m.last; else if (eurusd > 0) price = m.last / eurusd; } return p.units * (price || 0); }
 function liveNav() { const a = LIVE.account; return a.cash + a.positions.reduce((s, p) => s + liveValue(p), 0); }
 function renderNav() {
   if (!LIVE) return; const a = LIVE.account, nav = liveNav(), since = zero(nav / a.initial_capital - 1, 1e-4), today = zero(nav - a.nav, 0.01), invested = nav > 0 ? (nav - a.cash) / nav : 0;
@@ -605,7 +608,8 @@ function renderNav() {
 }
 function renderAcct() {
   const a = LIVE.account, armed = a.mode === "live" && a.armed, md = $("#mode");
-  md.className = "tag " + (a.mode === "paper" ? "info" : armed ? "good" : "warn"); md.lastElementChild.textContent = `${T(a.mode === "paper" ? "mode.paper" : armed ? "mode.live" : "mode.validate")} · ${a.profile}`;
+  const t212 = a.venue === "trading212", demo = t212 && a.venue_env === "demo";
+  md.className = "tag " + (a.mode === "paper" || demo ? "info" : armed ? "good" : "warn"); md.lastElementChild.textContent = `${T(a.mode === "paper" ? "mode.paper" : demo ? "mode.t212demo" : t212 ? (armed ? "mode.t212live" : "mode.t212dry") : armed ? "mode.live" : "mode.validate")} · ${a.profile}`;
   $("#acctSub").textContent = T("live"); renderNav();
   const hand = $("#hand"), mo = a.manual_orders || []; hand.hidden = !mo.length;
   if (mo.length) hand.replaceChildren(h("h3", { text: T("hand") }), ...mo.map(o => h("div", { class: "o" }, h("span", { text: `${T(o.notional_eur > 0 ? "buy" : "sell")} ${o.pair.slice(0, -3)}` }), h("b", { text: eur(Math.abs(o.notional_eur), 0) }))), h("p", { text: T("handNote") }));

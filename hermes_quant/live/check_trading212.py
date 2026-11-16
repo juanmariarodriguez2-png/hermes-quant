@@ -1,4 +1,13 @@
-"""Rehearse account access; only --trade-demo can send a demo round trip."""
+"""Rehearsal against a Trading 212 account. Without --trade-demo nothing can be sent.
+
+    python -m hermes_quant.live.check_trading212                 # read-only: account, instruments, market hours
+    python -m hermes_quant.live.check_trading212 --trade-demo    # practice money only: buys 5 euros of one market and sells it back
+
+It answers, before any money is at stake: does the key work, which of the model's
+markets does this account really offer and under which instrument, is each one's
+exchange open now, and what does the account hold. It also looks up the extra markets
+the owner asked about (Spanish and European shares, Japan, China) and says which exist.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +19,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ..data.trading212 import ReadOnlyClient, Trading212Client, Trading212Error
-from .trading212 import Trading212Broker, resolve, session_open
+from .trading212 import Trading212Broker, load_markets, resolve, session_open
 
 CONFIG = Path(__file__).resolve().parents[2] / "config" / "trading212.json"
 EXAMPLE = {"SPY": {"name": "S&P 500 ETF", "isin": ["IE00B5BMR087"]},
@@ -18,7 +27,9 @@ EXAMPLE = {"SPY": {"name": "S&P 500 ETF", "isin": ["IE00B5BMR087"]},
 PREFERENCE = ("EUR", "USD", "GBP", "GBX")
 
 
-def check(client, wanted, now, currency_preference=PREFERENCE) -> list[tuple[str, bool, str]]:
+def check(client, wanted, now, currency_preference=PREFERENCE, extra=None) -> list[tuple[str, bool | None, str]]:
+    """Rows of (what was checked, did it pass, detail). ``extra`` holds markets that are only
+    looked up: their rows carry ``None`` instead of a verdict, because not offering one is no failure."""
     rows = []
 
     def read(name, fn):
@@ -55,6 +66,12 @@ def check(client, wanted, now, currency_preference=PREFERENCE) -> list[tuple[str
                         rows.append((f"{symbol} other listings for {isin}", True, ", ".join(others) or "none"))
             else:
                 rows.append((symbol, False, problems[symbol]))
+        found, _ = resolve(extra or {}, instruments, tuple(currency_preference))
+        for symbol, request in (extra or {}).items():
+            listing = found.get(symbol)
+            opened = listing is not None and exchanges is not None and session_open(exchanges, listing.schedule, now)
+            rows.append((f"also asked about: {request.get('name', symbol)}", None,
+                         f"{listing.ticker}, {listing.currency}, market {'open' if opened else 'closed'}" if listing else "not offered by this account"))
     by_ticker = {listing.ticker: symbol for symbol, listing in listings.items()}
     if positions is not None:
         recognised, unknown = [], []
@@ -123,19 +140,24 @@ def main(argv=None) -> int:
         print("--trade-demo requires T212_ENV=demo; refusing to trade a live account.")
         return 2
     try:
-        config = json.loads(CONFIG.read_text()) if CONFIG.exists() else {"markets": EXAMPLE}
-        wanted, preference = config["markets"], tuple(config.get("currency_preference", PREFERENCE))
+        wanted, preference, extra = EXAMPLE, PREFERENCE, {}
+        if CONFIG.exists():
+            wanted, preference, _ = load_markets(CONFIG)
+            extra = load_markets(CONFIG, section="also_check")[0]
         now = datetime.now(timezone.utc)
+        print(f"Trading 212 rehearsal on the {env.upper()} account" + ("" if args.trade_demo else ": read-only, nothing can be sent.") + "\n")
         if args.trade_demo:
             return trade_demo(DemoClient(key, secret, env=env), wanted, now, args.price, preference)
-        rows = check(ReadOnlyClient(key, secret, env=env), wanted, now, preference)
+        rows = check(ReadOnlyClient(key, secret, env=env), wanted, now, preference, extra=extra)
     except (Trading212Error, ValueError, OSError, KeyError) as exc:
         print(f"FAIL  rehearsal: {exc}")
         return 1
     width = max((len(row[0]) for row in rows), default=0)
     for name, ok, detail in rows:
-        print(f"  {'ok  ' if ok else 'FAIL'}  {name:<{width}}  {detail}")
-    return 1 if any(not ok for _, ok, _ in rows) else 0
+        print(f"  {'info' if ok is None else 'ok  ' if ok else 'FAIL'}  {name:<{width}}  {detail}")
+    failed = [row for row in rows if row[1] is False]
+    print(f"\n{len(rows) - len(failed)} of {len(rows)} rows without a failure.")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

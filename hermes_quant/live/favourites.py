@@ -115,19 +115,27 @@ def select(prob_up: dict[str, float], eligible: dict[str, bool], held: set[str],
     return {s: float(basket.per_stock) for s in chosen}
 
 
-def evaluate(store: PriceStore, basket: Basket, cfg: ModelConfig, bar_date: pd.Timestamp, held: set[str]) -> dict:
-    """Score every favourite on ``bar_date`` and apply the rule. Uses the model's own
-    volatility and trend filters on a panel of its own, so the model's panel (and with
-    it every number the model computes) is untouched by this list."""
+def score(store: PriceStore, basket: Basket, cfg: ModelConfig, bar_date: pd.Timestamp):
+    """The favourites' own panel and the model's filters run on it, up to ``bar_date``.
+    Returns ``None`` when no favourite has a price yet. The model's panel is not involved,
+    so nothing the model computes can change because of this list."""
     listed = [i for i in instruments(basket) if len(store.load(i.symbol)[:bar_date])]
-    rows = {s: {"symbol": s, "name": name, "pair": stock_instrument(s).kraken_pair, "status": "no_data"}
-            for s, name in basket.stocks.items()}
     if not listed:
-        return {"rows": list(rows.values()), "weights": {}, "last_close": {}}
-
+        return None
     panel = build_live_panel(store, listed, end=bar_date)
     cfg = cfg.with_(min_history_days=basket.min_history_days, regime=False)
-    features = compute_features(panel, cfg, p_turbulent=pd.DataFrame(index=panel.close.index))
+    return panel, compute_features(panel, cfg, p_turbulent=pd.DataFrame(index=panel.close.index))
+
+
+def evaluate(store: PriceStore, basket: Basket, cfg: ModelConfig, bar_date: pd.Timestamp, held: set[str]) -> dict:
+    """Score every favourite on ``bar_date`` and apply the rule. One row per company says
+    where it stands: picked, trend down, too new, no free seat..."""
+    rows = {s: {"symbol": s, "name": name, "pair": stock_instrument(s).kraken_pair, "status": "no_data"}
+            for s, name in basket.stocks.items()}
+    scored = score(store, basket, cfg, bar_date)
+    if scored is None:
+        return {"rows": list(rows.values()), "weights": {}, "last_close": {}}
+    panel, features = scored
     t = len(panel.close) - 1
     close = panel.close.ffill()
     prob = {s: float(features.prob_up[s].iloc[t]) for s in panel.close.columns}

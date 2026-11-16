@@ -614,6 +614,18 @@ def test_the_basket_is_off_until_switched_on_and_never_changes_what_the_model_do
     assert on["favourites"]["invested"] <= ANY_TREND.budget
 
 
+def test_with_the_basket_off_the_run_is_exactly_what_it_is_with_no_list_at_all(sandbox):
+    shutil.copytree(sandbox / "live", sandbox / "none")
+    kw = dict(mode="paper", offline=True, now=MONDAY)
+    listed = run_daily.run(basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site", **kw)
+    nothing = run_daily.run(basket=favourites.Basket(), live_dir=sandbox / "none", site_dir=sandbox / "site2", **kw)
+    assert (sandbox / "live" / "state.json").read_text() == (sandbox / "none" / "state.json").read_text()
+    assert (sandbox / "live" / "equity.csv").read_text() == (sandbox / "none" / "equity.csv").read_text()
+    apart_from_the_card = lambda out: {k: v for k, v in out.items() if k != "favourites"}      # noqa: E731
+    assert apart_from_the_card(listed) == apart_from_the_card(nothing)
+    assert listed["account"]["orders_today"] and nothing["favourites"]["rows"] == []
+
+
 def test_the_basket_only_uses_money_the_model_leaves_idle(sandbox, monkeypatch):
     monkeypatch.setenv("HERMES_FAVOURITES", "yes")
     real = run_daily.target_weights

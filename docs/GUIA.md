@@ -6,7 +6,7 @@ Todo lo necesario para dejar Hermes Quant funcionando solo, cada noche, sin depe
 
 Cada noche, hacia las 01:23 UTC (las 2:23 en España en invierno, las 3:23 en verano), GitHub ejecuta el modelo:
 
-1. Descarga las velas del día de Kraken (12 criptomonedas, 8 fondos tokenizados y el euro/dólar).
+1. Descarga las velas del día de Kraken (12 criptomonedas, 8 fondos tokenizados, el euro/dólar y las acciones de tu lista de favoritas).
 2. Recalcula volatilidades, tendencias, régimen de mercado y correlaciones.
 3. Una vez por semana fija los pesos objetivo; el resto de días solo opera si algún peso se ha desviado lo bastante como para compensar la comisión.
 4. Ejecuta las órdenes (simuladas por defecto), guarda el estado en el propio repositorio y actualiza el panel.
@@ -105,6 +105,33 @@ Si prefieres reiniciar del todo el contador de rentabilidad, crea la variable `H
 ### El cortacircuitos
 
 Si la cuenta cae un 25 % desde su máximo, el modelo vende todo, se queda en liquidez y avisa. No vuelve a operar hasta que alguien edite `data/live/state.json` y ponga `"halted": false`. Está pensado para que un fallo, del modelo o del mercado, no se convierta en una ruina.
+
+## Acciones sueltas: la cesta de favoritas
+
+El modelo compra empresas a través de los fondos de índice, porque ninguna regla para elegir acciones ganó al índice cuando se probó (está en el panel y en `docs/RESEARCH.md`, paso 8). Si aun así quieres tener empresas concretas, hay una cesta aparte para eso. Está **apagada** hasta que la enciendas, y el panel enseña cada noche qué haría.
+
+**Qué hace, encendida**
+
+- Vigila tu lista (`config/favourites.json`): Nvidia, Tesla, Apple, Alphabet, Microsoft, Amazon, Meta y SpaceX.
+- Tiene como máximo **4 empresas a la vez, un 2,5 % de la cuenta cada una**: un 10 % en total.
+- Una empresa entra solo si su tendencia es alcista (probabilidad del 55 % o más, con el mismo filtro que usa el modelo) y sale cuando deja de serlo (por debajo del 45 %). Se decide una vez por semana, con el resto de la cartera.
+- Una acción recién salida a bolsa espera 180 días: antes, el filtro no tiene con qué juzgarla. SpaceX cotiza desde el 12 de junio de 2026, así que podrá entrar a partir del 9 de diciembre.
+- Solo usa dinero que el modelo deja en liquidez y nunca cambia lo que hace el modelo. Si el modelo necesita ese dinero, la cesta encoge.
+- El cortacircuitos también la vende.
+
+**Cómo se enciende:** en GitHub, *Settings → Secrets and variables → Actions → Variables → New repository variable*, nombre `HERMES_FAVOURITES`, valor `yes`. La ejecución siguiente fija el objetivo de la cesta. En una cuenta europea las compras aparecen, como las de los fondos, en el aviso de órdenes pendientes de colocar a mano (Convertir, de EUR a AAPLx, MSFTx...).
+
+**Cómo se apaga:** borra la variable o ponla en `no`. Apagarla **no vende nada**: las acciones que tengas se quedan en la cuenta, valoradas pero fuera del modelo, hasta que las vendas tú. Lo mismo vale para una acción de la lista que compres por tu cuenta con la cesta apagada: el bot la ve, la cuenta en el valor de la cuenta y no la toca.
+
+**Cómo se cambia la lista:** edita `config/favourites.json` (el símbolo de la acción y su nombre). Solo sirven acciones que Kraken tenga tokenizadas y que de verdad se negocien; el panel dice de cada una si entra, si espera o por qué no. Los dos límites (`per_stock` y `max_stocks`) también están ahí; el programa rechaza el fichero si, multiplicados, pasan del 30 % de la cuenta, y si no puede leerlo sigue operando sin la cesta y lo avisa.
+
+**Lo que conviene saber antes**
+
+- No hay prueba de que esto gane al índice. Con estas siete empresas la regla habría ido muy bien desde 2016, pero la lista está escrita hoy, sabiendo cuáles ganaron: ese resultado no demuestra nada.
+- Lo que sí se puede medir es cómo se comporta la regla. Cada empresa entra en la cesta menos de una vez al año. Las comisiones se llevan alrededor de un 0,8 % anual de la cesta por el libro de órdenes y un 2,5 % con Convertir, que es lo que paga una cuenta europea. La mayor caída de la cesta fue del 37 %, frente al 53 % de tener las siete siempre. Está en `research/12_favourites_basket.py`.
+- Con una cuenta de 230 €, cada posición son unos 5 €. Los porcentajes son los mismos con cualquier tamaño.
+- Anthropic no cotiza todavía. Cuando salga a bolsa y Kraken liste su acción, se añade a la lista y esperará sus 180 días como cualquier otra.
+- **Bolsa española, europea, japonesa o china:** Kraken no tiene ninguna acción de esos mercados. De sus 177 acciones tokenizadas solo cuatro no son estadounidenses (ASML, Novo Nordisk, AstraZeneca y TSMC) y solo ASML y TSMC se negocian de verdad; sus fondos de Europa y del mundo pasan días sin una sola operación. Para esos mercados hace falta otro bróker con API.
 
 ## 5. Qué hacer con el bot antiguo
 

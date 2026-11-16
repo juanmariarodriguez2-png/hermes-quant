@@ -66,7 +66,9 @@ One Kraken account, three sleeves:
 - **Real assets:** gold and silver (GLDx, SLVx). Always held, scaled by volatility.
 - **Crypto:** the four most liquid coins at the time, spot in EUR. Held only while their trend probability is positive.
 
-Single stocks and perpetual futures are scored every day and shown on the dashboard, but not traded: neither has passed a test that would justify it.
+Single stocks and perpetual futures are scored every day and shown on the dashboard, but the model does not trade them: neither has passed a test that would justify it.
+
+There is one door for single stocks, and it is outside the model: the owner's **favourites basket** (`config/favourites.json`, off unless `HERMES_FAVOURITES=yes`). At most four companies at 2.5% of the account each, held only while the model's trend filter says their trend is up, bought only with money the model leaves idle. It is a preference with a cap, not a finding, and the code keeps it apart: the model's weights are computed first from a panel the favourites are not in, and with the basket off the nightly run is byte-for-byte what it was.
 
 ## How it was checked
 
@@ -74,7 +76,7 @@ Single stocks and perpetual futures are scored every day and shown on the dashbo
 - **Survivorship-free crypto universe:** all 688 USDT markets Binance has ever listed, delisted ones included (Terra, FTX...). Membership is decided day by day from trailing volume.
 - **Trial registry:** 77 attempts are counted. The Deflated Sharpe Ratio on the design sample is 95% treating all of them as independent.
 - **Block bootstrap** for confidence intervals; Newey-West errors for regressions; ECB deposit rate for excess returns.
-- **60 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
+- **87 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
 - **Independent adversarial review** of the code by OpenAI Codex before the hold-out was opened: 16 findings, all addressed ([docs/RESEARCH.md](docs/RESEARCH.md#independent-review)).
 
 ## Run it
@@ -110,10 +112,11 @@ hermes_quant/
   regime/       hidden Markov model, turbulence and absorption gauges
   portfolio/    hierarchical risk parity, order planning shared by backtest and live
   backtest/     causal simulator, metrics, statistical tests
-  live/         daily runner, price store, paper broker, Kraken broker, monitors
+  live/         daily runner, price store, paper broker, Kraken broker, monitors, favourites basket
   model.py      the model: features and target weights
 research/       numbered scripts, one per research step, and their results
-tests/          60 tests
+tests/          87 tests
+config/         the owner's list of single stocks for the optional basket
 site/           the dashboard (static; reads live.json and research.json)
 tradingview/    Pine Script indicator showing the trend probability on any chart
 ```

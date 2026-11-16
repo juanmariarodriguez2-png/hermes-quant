@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-11-16T07:32:51Z",
+    "generated_at": "2026-11-16T08:03:03Z",
     "bar_date": "2026-11-15",
     "version": "2.0.0",
     "data_errors": {},
@@ -15,12 +15,12 @@
     "profile": "balanced",
     "inception": "2026-11-14",
     "initial_capital": 233.47,
-    "nav": 233.473280150665,
+    "nav": 233.4732746104045,
     "cash": 233.4709,
-    "invested_pct": 1.0194531311951591e-05,
-    "return_since_inception": 1.404955953665521e-05,
+    "invested_pct": 1.017080181216672e-05,
+    "return_since_inception": 1.4025829462083195e-05,
     "peak_nav": 233.473280150665,
-    "drawdown": 0.0,
+    "drawdown": -2.372974117204052e-08,
     "halted": false,
     "target_date": "2026-11-13",
     "target_refreshed_today": false,
@@ -31,7 +31,7 @@
         "name": "S&P 500",
         "class": "equity",
         "units": 0.0,
-        "price": 681.9397340379647,
+        "price": 682.3557194499447,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.15932363425928617
@@ -41,7 +41,7 @@
         "name": "Nasdaq 100",
         "class": "equity",
         "units": 0.0,
-        "price": 611.4947538557232,
+        "price": 611.7731475594471,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.06930978094921987
@@ -51,7 +51,7 @@
         "name": "Gold",
         "class": "real",
         "units": 0.0,
-        "price": 320.6572322332548,
+        "price": 320.39183273083984,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.27663671035230863
@@ -61,7 +61,7 @@
         "name": "Silver",
         "class": "real",
         "units": 0.0,
-        "price": 38.94995391746913,
+        "price": 38.99707533288525,
         "value": 0.0,
         "weight": 0.0,
         "target": 0.04375522043702116
@@ -73,7 +73,7 @@
         "symbol": "SPY",
         "name": "S&P 500",
         "class": "equity",
-        "notional_eur": 32.54808505903536,
+        "notional_eur": 32.54808428667773,
         "pair": "SPYxUSD",
         "market_open": true
       },
@@ -81,7 +81,7 @@
         "symbol": "QQQ",
         "name": "Nasdaq 100",
         "class": "equity",
-        "notional_eur": 13.847249103231785,
+        "notional_eur": 13.847248774640148,
         "pair": "QQQxUSD",
         "market_open": true
       },
@@ -89,7 +89,7 @@
         "symbol": "GLD",
         "name": "Gold",
         "class": "real",
-        "notional_eur": 56.513870154037555,
+        "notional_eur": 56.513868812978046,
         "pair": "GLDxUSD",
         "market_open": true
       },
@@ -97,7 +97,7 @@
         "symbol": "SLV",
         "name": "Silver",
         "class": "real",
-        "notional_eur": 7.880942037640094,
+        "notional_eur": 7.880941850627379,
         "pair": "SLVxUSD",
         "market_open": true
       }

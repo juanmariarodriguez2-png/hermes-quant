@@ -220,6 +220,25 @@ Why it fails here: the 2008–09 reversal, when the winners of the commodity boo
 
 **Decision.** The model keeps buying companies the way that survived the test: through the index funds. The dashboard now shows what that means in euros for each of the largest ones. Code: `research/09_stocks_data.py`, `research/10_stock_sleeve.py`.
 
+### The favourites basket: a preference with a cap
+
+The owner still wants to hold particular companies. That is his call, and it does not need the model to pretend it found something. So the list lives outside the model, in an optional basket (`hermes_quant/live/favourites.py`, off by default):
+
+- at most four companies at a time, 2.5% of the account each, so 10% in all;
+- a company comes in when the model's trend probability for it is 55% or more and goes below 45%; decided weekly; a new listing waits 180 days;
+- the basket's target is stored apart from the model's and only takes money the model leaves idle. With the basket off, the nightly run writes the same state file and the same orders as with no list at all, byte for byte (a test compares the two), and the same as the code before the basket existed (compared once, by hand, when it was added).
+
+The thresholds, the seat count and the waiting period were fixed before anything was run, and nothing was tuned afterwards. `research/12_favourites_basket.py` then ran the live code over the seven names with history, weekly decisions executed a day late through the same order planner. Returns are per euro allotted to the basket, empty seats counted as cash:
+
+| 2016 – Nov 2026, seven names chosen with hindsight | Return | Worst fall | Costs a year | Entries per stock a year |
+|---|---:|---:|---:|---:|
+| The basket rule, order-book costs (0.38% a side) | 36.8% | −37% | 0.8% | 0.6 |
+| The basket rule, Convert costs (1.07% a side) | 35.0% | −39% | 2.5% | 0.6 |
+| The same seven, always held | 34.6% | −53% | 0.1% | |
+| S&P 500 fund in euros, for scale | 14.5% | −33% | | |
+
+The return column is not evidence of anything: every name is on the list because its price multiplied, and the same rule applied to the companies that were really in the index lost to the index (above). What the run does show are properties of the rule that do not depend on the hindsight: it trades rarely, its costs at this account's venue are about 2.5% of the basket a year (0.25% of the account), and it cut the worst fall of holding the same names by about a third. Those are reasons to cap a preference this way, not reasons to expect a profit from it.
+
 ## Independent review
 
 Before the hold-out was opened, the code was given to OpenAI Codex (GPT-6 Astra, high reasoning effort, read-only) with instructions to find anything that would make the results untrustworthy, and a hard rule not to touch data after 2021. Sixteen findings.

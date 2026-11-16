@@ -1,0 +1,98 @@
+{
+ "window": {
+  "start": "2016-01-01",
+  "end": "2026-11-15"
+ },
+ "names": {
+  "NVDA": "Nvidia",
+  "TSLA": "Tesla",
+  "AAPL": "Apple",
+  "GOOGL": "Alphabet",
+  "MSFT": "Microsoft",
+  "AMZN": "Amazon",
+  "META": "Meta"
+ },
+ "basket": {
+  "per_stock": 0.025,
+  "max_stocks": 4,
+  "enter": 0.55,
+  "leave": 0.45
+ },
+ "warning": "names chosen with hindsight: the returns are not evidence",
+ "cases": {
+  "order book (0.38% a side)": {
+   "rule": {
+    "cagr": 0.36803011376080197,
+    "vol": 0.2973949264319928,
+    "sharpe": 1.202988393426143,
+    "max_drawdown": -0.3702549716372996,
+    "share_of_budget_invested": 0.9870105584288722,
+    "cost_per_year_on_budget": 0.007742301916179003,
+    "traded_per_year_on_budget": 2.307209878267644,
+    "account_cagr": 0.035964055673622486,
+    "account_max_drawdown": -0.04043429445070956
+   },
+   "hold_all": {
+    "cagr": 0.3455307725797372,
+    "vol": 0.32954304464185813,
+    "sharpe": 1.0664366705212178,
+    "max_drawdown": -0.5280158639138148,
+    "share_of_budget_invested": 1.1342323949229078,
+    "cost_per_year_on_budget": 0.0013865903588663837,
+    "traded_per_year_on_budget": 0.3648921997016801,
+    "account_cagr": 0.035204519542993085,
+    "account_max_drawdown": -0.06251644683166524
+   },
+   "entries_per_stock_per_year": 0.5776147316932816,
+   "held_share": {
+    "NVDA": 0.7880161127895267,
+    "TSLA": 0.2555387713997986,
+    "AAPL": 0.5234138972809668,
+    "GOOGL": 0.2797079556898288,
+    "MSFT": 0.7613293051359517,
+    "AMZN": 0.5498489425981873,
+    "META": 0.548086606243706
+   }
+  },
+  "Convert (1.07% a side)": {
+   "rule": {
+    "cagr": 0.3497044379214773,
+    "vol": 0.2976785474272447,
+    "sharpe": 1.156829305017982,
+    "max_drawdown": -0.3855842025189943,
+    "share_of_budget_invested": 0.9875256199533785,
+    "cost_per_year_on_budget": 0.024514574065104048,
+    "traded_per_year_on_budget": 2.29108168832748,
+    "account_cagr": 0.034576103366567024,
+    "account_max_drawdown": -0.04276404840310577
+   },
+   "hold_all": {
+    "cagr": 0.34288536668647973,
+    "vol": 0.32953577702873854,
+    "sharpe": 1.060479306081132,
+    "max_drawdown": -0.5282595960829239,
+    "share_of_budget_invested": 1.1345726664970412,
+    "cost_per_year_on_budget": 0.003904309974718794,
+    "traded_per_year_on_budget": 0.36488878268399927,
+    "account_cagr": 0.03500055258839363,
+    "account_max_drawdown": -0.06256210991238065
+   },
+   "entries_per_stock_per_year": 0.5776147316932816,
+   "held_share": {
+    "NVDA": 0.7880161127895267,
+    "TSLA": 0.2555387713997986,
+    "AAPL": 0.5234138972809668,
+    "GOOGL": 0.2797079556898288,
+    "MSFT": 0.7613293051359517,
+    "AMZN": 0.5498489425981873,
+    "META": 0.548086606243706
+   }
+  }
+ },
+ "sp500": {
+  "cagr": 0.14533520980913406,
+  "vol": 0.1932229123856803,
+  "sharpe": 0.7992479261155512,
+  "max_drawdown": -0.33091146387907766
+ }
+}

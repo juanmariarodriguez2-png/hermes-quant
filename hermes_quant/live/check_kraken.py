@@ -20,6 +20,7 @@ from ..data import kraken
 from ..data.kraken import KrakenClient
 from ..portfolio.execution import CostModel
 from ..universe import LIVE_INSTRUMENTS, Instrument
+from . import favourites
 from .brokers import FX_PAIR, REFUSALS, KrakenBroker
 from .run_daily import LIVE, _now, market_open
 
@@ -60,6 +61,10 @@ def reference_prices(symbols, by_symbol: dict[str, Instrument], eurusd: float) -
 def check(client, state: dict, now=None) -> list[Row]:
     rows: list[Row] = []
     by_symbol = {i.symbol: i for i in LIVE_INSTRUMENTS}
+    try:                                   # the owner's single stocks, when the basket has put any in the target
+        by_symbol.update({i.symbol: i for i in favourites.instruments(favourites.load())})
+    except Exception as exc:  # noqa: BLE001
+        rows.append(("read the favourites list", False, f"{type(exc).__name__}: {exc}"))
     now = now or _now()
 
     def attempt(name: str, fn, describe=lambda out: ""):
@@ -85,7 +90,8 @@ def check(client, state: dict, now=None) -> list[Row]:
     raw = {k: v for k, v in sorted(client.balances().items()) if v > 0}
     rows.append(("balance names at Kraken", True, ", ".join(f"{k}={v:.8g}" for k, v in raw.items()) or "none"))
     held = broker.units()
-    target = {s: w for s, w in state.get("target", {}).items() if s in by_symbol and w > 0}
+    wanted = {**state.get("target", {}), **(state.get("basket_target") or {})}      # the model's target and the basket's
+    target = {s: w for s, w in wanted.items() if s in by_symbol and w > 0}
     prices = reference_prices(sorted(set(target) | set(held) | {CRYPTO_PROBE[0]}), by_symbol, eurusd)
     value = sum(units * prices.get(s, 0.0) for s, units in held.items())
     dollars = broker.usd_cash() / eurusd

@@ -13,7 +13,7 @@
 :root {
   --page: #f3f5f8; --surface: #fdfdfe; --inset: #f5f7fa; --ink: #0e1420; --ink-2: #4a5263; --muted: #7d8696;
   --hair: #e2e6ec; --axis: #c5cbd5; --accent: #2a78d6; --accent-soft: #e4eefb;
-  --c-crypto: #eb6834; --c-equity: #1baf7a; --c-real: #eda100; --c-neg: #e34948; --c-idle: #c9ced6;
+  --c-crypto: #eb6834; --c-equity: #1baf7a; --c-real: #eda100; --c-stock: #7a5fd0; --c-neg: #e34948; --c-idle: #c9ced6;
   --good: #0ca30c; --good-ink: #006300; --warn: #fab219; --serious: #ec835a; --crit: #d03b3b;
   --mid: #eef0f3; --ring: rgba(14, 20, 32, 0.10);
   --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -23,7 +23,7 @@
   :root:not([data-theme="light"]) {
     --page: #0b0e13; --surface: #171b22; --inset: #1e232c; --ink: #eef1f5; --ink-2: #b9c0cc; --muted: #8a93a3;
     --hair: #272d37; --axis: #3a4250; --accent: #3987e5; --accent-soft: #16263d;
-    --c-crypto: #d95926; --c-equity: #199e70; --c-real: #c98500; --c-neg: #e66767; --c-idle: #4a5261;
+    --c-crypto: #d95926; --c-equity: #199e70; --c-real: #c98500; --c-stock: #8f6fe0; --c-neg: #e66767; --c-idle: #4a5261;
     --good: #0ca30c; --good-ink: #37c437; --warn: #fab219; --serious: #ec835a; --crit: #e05a5a;
     --mid: #2a303a; --ring: rgba(255, 255, 255, 0.10); color-scheme: dark;
   }
@@ -31,7 +31,7 @@
 :root[data-theme="dark"] {
   --page: #0b0e13; --surface: #171b22; --inset: #1e232c; --ink: #eef1f5; --ink-2: #b9c0cc; --muted: #8a93a3;
   --hair: #272d37; --axis: #3a4250; --accent: #3987e5; --accent-soft: #16263d;
-  --c-crypto: #d95926; --c-equity: #199e70; --c-real: #c98500; --c-neg: #e66767; --c-idle: #4a5261;
+  --c-crypto: #d95926; --c-equity: #199e70; --c-real: #c98500; --c-stock: #8f6fe0; --c-neg: #e66767; --c-idle: #4a5261;
   --good: #0ca30c; --good-ink: #37c437; --warn: #fab219; --serious: #ec835a; --crit: #e05a5a;
   --mid: #2a303a; --ring: rgba(255, 255, 255, 0.10); color-scheme: dark;
 }
@@ -117,11 +117,14 @@ td.r, th.r { text-align: right; padding-left: 10px; padding-right: 18px; }
 tr > td:last-child, tr > th:last-child { padding-right: 0; }
 td.num { white-space: nowrap; }
 tr.lead td { font-weight: 600; }
+#fav .ph { display: none; } #fav .asset b { white-space: nowrap; }
 @media (max-width: 560px) {
   th { white-space: normal; font-size: 10.5px; letter-spacing: 0.02em; }
   td.r, th.r { padding-left: 4px; padding-right: 8px; }
-  .prob { grid-template-columns: 64px auto; }
+  table .prob { grid-template-columns: 64px auto; } #fav .prob { grid-template-columns: 44px auto; }
   #metrics tr > :nth-child(3) { display: none; } /* volatility: Sharpe and worst loss carry the risk on a phone */
+  #fav .pd { display: none; } /* favourites: the status moves under the company's name, the 30-day change goes */
+  #fav .ph { display: block; margin-top: 5px; } #fav .ph .pill { white-space: normal; border-radius: 10px; }
 }
 .asset { display: grid; gap: 1px; min-width: 9ch; } .asset b { font-weight: 500; } .asset span { font: 400 11.5px/1.2 var(--mono); color: var(--muted); }
 .chip { display: inline-block; padding: 1px 7px; border-radius: 4px; font: 500 11px/1.5 var(--mono); background: var(--inset); color: var(--ink-2); white-space: nowrap; }
@@ -222,6 +225,8 @@ footer p + p { margin-top: 6px; }
     <div class="card c7"><h3 data-t="pf.positions"></h3><div class="scroll"><table id="positions"></table></div><p class="note" id="pfNote"></p></div>
     <div class="card c5"><h3 data-t="pf.track"></h3><p class="sub" data-t="pf.trackSub"></p><div class="chart" id="liveChart"></div><div class="scroll"><table id="orders"></table></div></div>
     <div class="card" id="throughCard" hidden><h3 data-t="lt.title"></h3><p class="sub" data-t="lt.sub"></p><div class="scroll"><table id="through"></table></div><p class="note" id="throughNote"></p></div>
+    <div class="card" id="favCard" hidden><div class="tools"><h3 data-t="fav.title"></h3><span class="pill" id="favPill"><i></i><span></span></span></div>
+      <p class="sub" id="favSub"></p><div class="scroll"><table id="fav"></table></div><p class="note" id="favNote"></p></div>
   </div>
 </div></section>
 
@@ -286,7 +291,7 @@ es: {
  "see.tableNote": "P(tendencia ↑) sale de un banco de filtros de Kalman sobre rentabilidades normalizadas por volatilidad: no es una opinión, es la probabilidad posterior de que la deriva latente sea positiva. La línea azul del minigráfico es el precio sin ruido que estima el filtro.",
  "col.asset": "Activo", "col.sleeve": "Bloque", "col.prob": "P(tendencia ↑)", "col.vol": "Volatilidad", "col.trend": "Precio y tendencia · 1 año",
  "col.m1": "30 días", "col.target": "Peso objetivo", "col.state": "Estado",
- "sleeve.equity": "Acciones", "sleeve.real": "Activos reales", "sleeve.crypto": "Cripto", "sleeve.cash": "Liquidez",
+ "sleeve.equity": "Acciones", "sleeve.real": "Activos reales", "sleeve.crypto": "Cripto", "sleeve.stock": "Acciones sueltas", "sleeve.cash": "Liquidez",
  "st.hold": "En cartera", "st.none": "Sin tendencia", "st.out": "Fuera del top 4", "st.illiq": "Sin liquidez en Kraken", "st.core": "Posición estratégica",
  "regime.title": "Estado oculto de la bolsa",
  "regime.sub": "Un modelo de Markov oculto estima, solo con datos pasados, la probabilidad de estar en el régimen turbulento del S&P 500.",
@@ -308,6 +313,15 @@ es: {
  "pf.empty": "Todo en liquidez por ahora.", "pf.noOrders": "Sin órdenes todavía.",
  "pf.note": "Objetivo fijado el {d}. Próxima revisión en {n} días.", "pf.weekend": " Las acciones tokenizadas solo se negocian de lunes a viernes: las órdenes pendientes saldrán en la próxima sesión.",
  "col.date": "Fecha", "col.order": "Orden", "col.amount": "Importe", "col.cost": "Coste",
+ "fav.title": "Sus acciones: la cesta de favoritas", "fav.on": "Encendida", "fav.off": "Apagada",
+ "fav.sub.off": "Las empresas que usted eligió, puntuadas cada noche con el mismo filtro de tendencia del modelo. La cesta está apagada: el bot no compra ninguna. Encendida, tendría como máximo {n} a la vez, un {p} de la cuenta cada una ({b} en total), y solo mientras su tendencia sea alcista.",
+ "fav.sub.on": "Las empresas que usted eligió. El bot tiene como máximo {n} a la vez, un {p} de la cuenta cada una ({b} en total), solo mientras su tendencia sea alcista y solo con dinero que el modelo deja libre.",
+ "fav.company": "Empresa", "fav.state": "Situación", "fav.would": "Peso si se enciende", "fav.target": "Objetivo", "fav.held": "En cartera", "fav.outside": "fuera del modelo",
+ "fav.s.in": "En la cesta", "fav.s.enter": "Entra en la próxima revisión", "fav.s.leave": "Sale en la próxima revisión", "fav.s.picked": "Entraría hoy",
+ "fav.s.trend_down": "Tendencia bajista", "fav.s.trend_weak": "Tendencia sin confirmar", "fav.s.no_seat": "En tendencia, sin hueco", "fav.s.too_new": "Nueva: faltan {d} días",
+ "fav.s.illiquid": "Casi no se negocia", "fav.s.no_data": "No cotiza en Kraken", "fav.s.no_signal": "Sin señal todavía", "fav.s.stale": " · sin datos hoy", "fav.s.waiting": "Aún no cotiza",
+ "fav.note": "Entra con una probabilidad de tendencia del {e} o más y sale por debajo del {l}; una acción nueva espera {d} días de cotización. Elegir acciones no ha demostrado ganar al índice (véase el radar, más abajo): la cesta es una preferencia, por eso tiene tope y es independiente del modelo.",
+ "fav.how": " Se enciende con la variable HERMES_FAVOURITES = yes en GitHub.", "fav.err": "La cesta de favoritas ha fallado y se ha ignorado; el modelo sigue operando con normalidad. Detalle: {e}",
  "lt.title": "Empresas que ya tiene a través de los fondos", "lt.sub": "Un fondo de índice es una cesta: quien lo tiene, tiene un trozo de cada empresa que lo compone. Estas son las mayores.",
  "lt.company": "Empresa", "lt.via": "A través de", "lt.share": "% de la cuenta", "lt.note": "Solo cuenta las diez mayores posiciones de cada fondo, a {d} (Yahoo Finance); la cifra real es algo mayor.",
  "buy": "Compra", "sell": "Venta", "live.hermes": "Hermes", "live.btc": "Bitcoin", "live.spx": "S&P 500", "live.soon": "La curva aparecerá cuando haya al menos dos días de historia.",
@@ -395,7 +409,7 @@ en: {
  "see.tableNote": "P(trend ↑) comes from a bank of Kalman filters on volatility-normalised returns: not an opinion, but the posterior probability that the latent drift is positive. The blue line in the sparkline is the denoised price the filter estimates.",
  "col.asset": "Asset", "col.sleeve": "Sleeve", "col.prob": "P(trend ↑)", "col.vol": "Volatility", "col.trend": "Price and trend · 1 year",
  "col.m1": "30 days", "col.target": "Target weight", "col.state": "Status",
- "sleeve.equity": "Equities", "sleeve.real": "Real assets", "sleeve.crypto": "Crypto", "sleeve.cash": "Cash",
+ "sleeve.equity": "Equities", "sleeve.real": "Real assets", "sleeve.crypto": "Crypto", "sleeve.stock": "Single stocks", "sleeve.cash": "Cash",
  "st.hold": "Held", "st.none": "No trend", "st.out": "Outside top 4", "st.illiq": "Illiquid on Kraken", "st.core": "Strategic holding",
  "regime.title": "Hidden state of the stock market",
  "regime.sub": "A hidden Markov model estimates, from past data only, the probability that the S&P 500 is in its turbulent regime.",
@@ -417,6 +431,15 @@ en: {
  "pf.empty": "All in cash for now.", "pf.noOrders": "No orders yet.",
  "pf.note": "Target set on {d}. Next review in {n} days.", "pf.weekend": " Tokenized stocks trade Monday to Friday only: pending orders go out at the next session.",
  "col.date": "Date", "col.order": "Order", "col.amount": "Amount", "col.cost": "Cost",
+ "fav.title": "Your stocks: the favourites basket", "fav.on": "On", "fav.off": "Off",
+ "fav.sub.off": "The companies you chose, scored every night with the model's own trend filter. The basket is off: the bot buys none of them. Switched on, it would hold at most {n} at a time, {p} of the account each ({b} in all), and only while their trend is up.",
+ "fav.sub.on": "The companies you chose. The bot holds at most {n} at a time, {p} of the account each ({b} in all), only while their trend is up and only with money the model leaves idle.",
+ "fav.company": "Company", "fav.state": "Status", "fav.would": "Weight if switched on", "fav.target": "Target", "fav.held": "Held", "fav.outside": "outside the model",
+ "fav.s.in": "In the basket", "fav.s.enter": "Comes in at the next review", "fav.s.leave": "Goes at the next review", "fav.s.picked": "Would come in today",
+ "fav.s.trend_down": "Trend down", "fav.s.trend_weak": "Trend not confirmed", "fav.s.no_seat": "Trending, no free seat", "fav.s.too_new": "New: {d} days to go",
+ "fav.s.illiquid": "Barely trades", "fav.s.no_data": "Not listed on Kraken", "fav.s.no_signal": "No signal yet", "fav.s.stale": " · no data today", "fav.s.waiting": "Not listed yet",
+ "fav.note": "A stock comes in with a trend probability of {e} or more and goes below {l}; a new one waits for {d} days of prices. Picking stocks has not been shown to beat the index (see the radar below): the basket is a preference, which is why it is capped and kept apart from the model.",
+ "fav.how": " It is switched on with the variable HERMES_FAVOURITES = yes on GitHub.", "fav.err": "The favourites basket failed and was ignored; the model carries on as usual. Detail: {e}",
  "lt.title": "Companies already owned through the funds", "lt.sub": "An index fund is a basket: holding it means holding a slice of every company in it. These are the largest.",
  "lt.company": "Company", "lt.via": "Through", "lt.share": "% of account", "lt.note": "Counts only each fund's ten largest holdings, as of {d} (Yahoo Finance); the true figure is a little higher.",
  "buy": "Buy", "sell": "Sell", "live.hermes": "Hermes", "live.btc": "Bitcoin", "live.spx": "S&P 500", "live.soon": "The curve appears once there are at least two days of history.",
@@ -516,7 +539,7 @@ const num = (x, d = 2, sign = false) => x == null || !isFinite(x) ? "—" : new 
 const eur = (x, d = 2) => x == null || !isFinite(x) ? "—" : new Intl.NumberFormat(loc(), { style: "currency", currency: "EUR", minimumFractionDigits: d, maximumFractionDigits: d }).format(x);
 const dateFmt = (iso, opts) => new Intl.DateTimeFormat(loc(), opts || { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date(iso + (iso.length === 10 ? "T00:00:00Z" : "")));
 const ts = (iso) => Date.parse(iso + "T00:00:00Z");
-const SLEEVE = { equity: "--c-equity", real: "--c-real", crypto: "--c-crypto", cash: "--c-idle" };
+const SLEEVE = { equity: "--c-equity", real: "--c-real", crypto: "--c-crypto", stock: "--c-stock", cash: "--c-idle" };
 
 /* one shared tooltip per chart container */
 function tooltip(box) {
@@ -792,7 +815,8 @@ function renderLive() {
   const pt = $("#positions"); pt.replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("col.asset") }), h("th", { class: "r", text: T("col.value") }), h("th", { class: "r", text: T("col.weight") }), h("th", { class: "r", text: T("col.target") }), h("th", { class: "r", text: T("col.gap") }))));
   const pb = h("tbody");
   const pos = [...a.positions].sort((x, y) => y.target - x.target);
-  for (const r of pos) pb.append(h("tr", {}, h("td", {}, h("span", { class: "dot", style: `background:${css(SLEEVE[r.class])}` }), nm(r.name), " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "r num", text: eur(r.value) }), h("td", { class: "r num", text: pct(r.weight, 1) }), h("td", { class: "r num", text: pct(r.target, 1) }), h("td", { class: "r num", text: pct(r.target - r.weight, 1, true) })));
+  for (const r of pos) { const own = r.managed === false;      /* a single stock the owner holds while the basket is off */
+    pb.append(h("tr", {}, h("td", {}, h("span", { class: "dot", style: `background:${css(SLEEVE[r.class])}` }), nm(r.name), " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "r num", text: eur(r.value) }), h("td", { class: "r num", text: pct(r.weight, 1) }), h("td", { class: own ? "r muted" : "r num", text: own ? T("fav.outside") : pct(r.target, 1) }), h("td", { class: "r num", text: own ? "—" : pct(r.target - r.weight, 1, true) }))); }
   const tw = pos.reduce((x, r) => x + r.target, 0);
   pb.append(h("tr", { class: "lead" }, h("td", {}, h("span", { class: "dot", style: `background:${css("--c-idle")}` }), T("sleeve.cash")), h("td", { class: "r num", text: eur(a.cash) }), h("td", { class: "r num", text: pct(a.nav ? a.cash / a.nav : 1, 1) }), h("td", { class: "r num", text: pct(1 - tw, 1) }), h("td", { class: "r num", text: pct((1 - tw) - (a.nav ? a.cash / a.nav : 1), 1, true) })));
   pt.append(pb);
@@ -820,6 +844,34 @@ function renderThrough() {
   $("#through").replaceChildren(h("thead", {}, h("tr", {}, h("th", { text: T("lt.company") }), h("th", { text: T("lt.via") }), h("th", { class: "r", text: T("col.amount") }), h("th", { class: "r", text: T("lt.share") }))),
     h("tbody", {}, ...top.map(r => h("tr", {}, h("td", {}, r.name, " ", h("span", { class: "mono muted", style: "font-size:11.5px", text: r.symbol })), h("td", { class: "mono muted", style: "font-size:12px", text: r.via.join(" · ") }), h("td", { class: "r num", text: eur(r.eur) }), h("td", { class: "r num", text: pct(a.nav ? r.eur / a.nav : 0, 1) })))));
   $("#throughNote").textContent = T("lt.note", { d: dateFmt(HOLD.as_of) });
+}
+
+function renderFav() {
+  const card = $("#favCard"), F = LIVE && LIVE.favourites; card.hidden = true;
+  if (!F || !(F.rows || []).length && !F.error) return;
+  card.hidden = false;
+  const on = !!F.enabled, anyHeld = (F.rows || []).some(r => r.value > 0.01), pill = $("#favPill"); pill.className = "pill " + (on ? "good" : ""); pill.lastElementChild.textContent = T(on ? "fav.on" : "fav.off");
+  const tb = $("#fav"); tb.replaceChildren();
+  if (F.error) { $("#favSub").textContent = T("fav.err", { e: F.error }); $("#favNote").textContent = ""; return; }
+  $("#favSub").textContent = T(on ? "fav.sub.on" : "fav.sub.off", { n: String(F.max_stocks), p: pct(F.per_stock, 1), b: pct(F.budget, 0) });
+  tb.append(h("thead", {}, h("tr", {}, h("th", { text: T("fav.company") }), h("th", { text: T("col.prob") }), h("th", { class: "r pd", text: T("col.m1") }), h("th", { class: "pd", text: T("fav.state") }), h("th", { class: "r", text: T(on ? "fav.target" : "fav.would") }), anyHeld ? h("th", { class: "r", text: T("fav.held") }) : "")));
+  const b = h("tbody"), rank = (r) => (r.value > 0.01 || r.target > 0 ? 0 : r.status === "picked" ? 1 : 2);
+  for (const r of [...F.rows].sort((x, y) => rank(x) - rank(y) || (y.prob_up ?? -1) - (x.prob_up ?? -1))) {
+    const has = r.prob_up != null, up = r.prob_up >= 0.5, w = Math.abs((r.prob_up ?? 0.5) - 0.5) * 100, picked = r.status === "picked";
+    const st = on && r.target > 0 ? (picked ? ["fav.s.in", "good"] : ["fav.s.leave", "warn"]) : on && picked ? ["fav.s.enter", "info"] : picked ? ["fav.s.picked", "info"] : ["fav.s." + r.status, ""];
+    const share = on ? r.target : r.weight;
+    const state = () => h("span", { class: "pill " + st[1] }, h("i"), T(st[0], { d: String(r.days_to_wait ?? "") }) + (r.stale ? T("fav.s.stale") : ""));
+    b.append(h("tr", {}, h("td", {}, h("div", { class: "asset" }, h("b", {}, h("span", { class: "dot", style: `background:${css("--c-stock")}` }), r.name), h("span", { text: r.symbol })), h("div", { class: "ph" }, state())),
+      h("td", {}, has ? h("div", { class: "prob" }, h("div", { class: "track" }, h("div", { class: "fill", style: `${up ? "left:50%" : "right:50%"};width:${w}%;background:${css(up ? "--accent" : "--c-neg")}` })), h("span", { class: "num", text: pct(r.prob_up, 0) })) : h("span", { class: "muted", text: "—" })),
+      h("td", { class: "r num pd", text: r.ret_30d == null ? "—" : pct(r.ret_30d, 1, true) }),
+      h("td", { class: "pd" }, state()),
+      h("td", { class: "r num", text: share > 0.0005 ? pct(share, 1) : "—" }),
+      anyHeld ? h("td", { class: "r num" }, r.value > 0.01 ? eur(r.value) : "—", r.value > 0.01 && !on ? h("div", { class: "muted", style: "font-size:11.5px", text: T("fav.outside") }) : "") : ""));
+  }
+  for (const name of F.waiting || []) { const wait = () => h("span", { class: "pill" }, h("i"), T("fav.s.waiting"));
+    b.append(h("tr", {}, h("td", {}, h("div", { class: "asset" }, h("b", {}, h("span", { class: "dot", style: `background:${css("--c-idle")}` }), name)), h("div", { class: "ph" }, wait())), h("td", {}, h("span", { class: "muted", text: "—" })), h("td", { class: "r num pd", text: "—" }), h("td", { class: "pd" }, wait()), h("td", { class: "r num", text: "—" }), anyHeld ? h("td", { class: "r num", text: "—" }) : "")); }
+  tb.append(b);
+  $("#favNote").textContent = T("fav.note", { e: pct(F.enter, 0), l: pct(F.leave, 0), d: String(F.min_history_days) }) + (on ? "" : T("fav.how"));
 }
 
 function renderWatch() {
@@ -946,7 +998,7 @@ function renderResearch() {
   nz.append(h("p", { class: "note", text: T("old.noiseNote") }));
 }
 
-function renderAll() { renderStatic(); renderLive(); renderThrough(); renderResearch(); renderWatch(); }
+function renderAll() { renderStatic(); renderLive(); renderThrough(); renderFav(); renderResearch(); renderWatch(); }
 $("#lang-es").addEventListener("click", () => { lang = "es"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#lang-en").addEventListener("click", () => { lang = "en"; try { localStorage.setItem("hq-lang", lang); } catch (e) {} renderAll(); });
 $("#corrToggle").addEventListener("click", () => { corrMode = corrMode === "cleaned" ? "raw" : "cleaned"; renderHeat(); });

@@ -12,6 +12,11 @@ candles, rescaled so there is no jump at the join:
 After this, ``hermes_quant.live.run_daily`` keeps the store current by itself.
 
     python scripts/seed_live_history.py
+    python scripts/seed_live_history.py --favourites     # only the owner's single stocks
+
+The single stocks of the optional favourites basket (config/favourites.json) get the
+same treatment from the company's own share price. Seeding them is optional: a stock
+added later simply starts from Kraken's own candles.
 """
 
 from __future__ import annotations
@@ -26,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from hermes_quant.data import kraken  # noqa: E402
+from hermes_quant.live import favourites  # noqa: E402
 from hermes_quant.live.market import COLUMNS, FX_SYMBOL, PriceStore  # noqa: E402
 from hermes_quant.universe import LIVE_INSTRUMENTS  # noqa: E402
 
@@ -43,8 +49,35 @@ def splice(history: pd.DataFrame, venue: pd.DataFrame) -> tuple[pd.DataFrame, fl
     return pd.concat([older[COLUMNS], venue[COLUMNS]]).sort_index(), ratio
 
 
+def seed_favourites(store: PriceStore) -> None:
+    """Company share prices (Yahoo, dividend-adjusted) in front of Kraken's token candles."""
+    import yfinance as yf
+
+    for inst in favourites.instruments(favourites.load()):
+        try:
+            venue = kraken.ohlc_daily(inst.kraken_pair, inst.tokenized)
+        except Exception as exc:  # noqa: BLE001
+            print(f"{inst.symbol:6s} NOT AVAILABLE on Kraken ({exc})")
+            continue
+        raw = yf.download(inst.symbol, start=SEED_START, interval="1d", auto_adjust=True, progress=False, multi_level_index=False)
+        hist = raw.rename(columns=str.lower)
+        if len(hist):
+            hist.index = pd.DatetimeIndex(hist.index).tz_localize(None).normalize()
+            hist = hist[np.isfinite(hist["close"]) & (hist["close"] > 0)]
+        if len(hist):
+            merged, ratio = splice(hist, venue)
+        else:
+            merged, ratio = venue[COLUMNS], float("nan")
+        store.save(inst.symbol, merged)
+        print(f"{inst.symbol:6s} {merged.index[0].date()} -> {merged.index[-1].date()}  {len(merged):5d} rows  "
+              f"Kraken from {venue.index[0].date()} ({len(venue)} candles)  join ratio {ratio:.4f}")
+
+
 def main() -> None:
     store = PriceStore(ROOT / "data" / "live" / "prices")
+    if "--favourites" in sys.argv:
+        seed_favourites(store)
+        return
     yahoo = pd.read_parquet(RESEARCH / "yahoo_daily.parquet")
     full = RESEARCH / "binance_klines_full.parquet"
     binance = pd.read_parquet(full if full.exists() else RESEARCH / "binance_klines.parquet")

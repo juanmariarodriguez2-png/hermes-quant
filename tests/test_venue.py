@@ -323,3 +323,75 @@ def test_the_venue_name_is_checked(sandbox, monkeypatch):
     monkeypatch.setenv("HERMES_VENUE", "somewhere")
     with pytest.raises(ValueError):
         run_daily.run(mode="live", offline=True, now=NIGHT, live_dir=sandbox / "live", site_dir=sandbox / "site")
+
+
+def test_a_fall_in_a_holding_the_run_does_not_follow_is_a_loss_not_a_withdrawal(sandbox):
+    api, venue = account(cash=1000.0, positions={"ZZZ_US_EQ": 100.0})          # 700 euros of something the owner bought
+    first = run(sandbox, venue, AFTERNOON)["account"]
+    assert first["nav"] == pytest.approx(1700.0, rel=5e-3)
+    state = json.loads(record(sandbox, venue).read_text())
+    assert state["holdings"]["ZZZ_US_EQ"] == [100.0, 700.0]
+    state["last_bar"] = None
+    record(sandbox, venue).write_text(json.dumps(state))
+    api.fill_prices["ZZZ_US_EQ"] = 4.2                         # it falls 40% overnight
+    venue.broker.refresh()
+    later = run(sandbox, venue, AFTERNOON)["account"]
+    assert later["flow_today"] == 0.0 and later["initial_capital"] == pytest.approx(first["initial_capital"])
+    assert later["drawdown"] == pytest.approx(-280.0 / first["nav"], abs=0.01) and later["return_since_inception"] < -0.15
+
+
+def test_targets_are_fractions_of_the_whole_account(sandbox):
+    shutil.copytree(sandbox / "live", sandbox / "plain")
+    api, venue = account(cash=1000.0, positions={"ZZZ_US_EQ": 1000.0 / 7.0})   # half the account is the owner's own holding
+    mixed = {o["symbol"]: o["notional_eur"] for o in run(sandbox, venue, AFTERNOON)["account"]["orders_today"]}
+    api2, venue2 = account(cash=2000.0, number=5005)
+    venue2.clock = lambda: AFTERNOON
+    plain = run_daily.run(mode="live", offline=True, now=AFTERNOON, venue=venue2, basket=favourites.Basket(),
+                          live_dir=sandbox / "plain", site_dir=sandbox / "site2")["account"]["orders_today"]
+    assert mixed and {o["symbol"] for o in plain} == set(mixed)
+    for o in plain:                                            # the same sizes as an account worth the same, all in cash
+        assert mixed[o["symbol"]] == pytest.approx(o["notional_eur"], rel=0.02)
+
+
+def test_a_dry_run_does_not_use_up_the_day(sandbox):
+    api, unarmed = account(armed=False)
+    dry = run(sandbox, unarmed, AFTERNOON)["account"]
+    assert api.sent == [] and dry["orders_today"] and json.loads(record(sandbox, unarmed).read_text())["traded"] == {}
+    armed = t212.Venue(api, armed=True, max_order_eur=500.0, quote=lambda feed, eurusd: REFERENCE[feed], sleep=lambda seconds: None)
+    assert armed.record == unarmed.record
+    real = run(sandbox, armed, AFTERNOON)["account"]
+    assert api.sent and {"SPY", "GLD"} <= {o["symbol"] for o in real["orders_today"] if o["status"] == "filled"}
+
+
+class HistoryHiccup(Account):
+    """The order history fails to answer the first time it is asked."""
+
+    hiccups = 1
+
+    def history(self, ticker=None, limit=50):
+        if self.hiccups:
+            self.hiccups -= 1
+            from hermes_quant.data.trading212 import Trading212Error
+            raise Trading212Error("try later", status=503)
+        return super().history(ticker, limit)
+
+
+def test_an_order_that_was_never_sent_keeps_its_round(sandbox):
+    api, venue = account(kind=HistoryHiccup)
+    first = run(sandbox, venue, AFTERNOON)["account"]
+    unsent = [o for o in first["orders_today"] if o["status"] == "skipped" and "nothing was sent" in o["detail"]]
+    assert len(unsent) == 1 and unsent[0]["symbol"] not in json.loads(record(sandbox, venue).read_text())["traded"]
+    again = run(sandbox, venue, AFTERNOON)["account"]
+    assert [o["symbol"] for o in again["orders_today"] if o["status"] == "filled"] == [unsent[0]["symbol"]]
+
+
+def test_the_order_planner_counts_value_held_outside_the_plan_without_spending_it():
+    import numpy as np
+
+    from hermes_quant.portfolio.execution import CostModel, TradingRules, plan_orders
+
+    args = (np.array([0.5]), np.array([0.0]), 1000.0, np.array([True]), ["equity"], CostModel(), TradingRules())
+    alone, beside = plan_orders(*args)[0], plan_orders(*args, outside=1000.0)[0]
+    assert beside == pytest.approx(2 * alone) and beside < 1000.0          # twice the target in euros, still paid from the cash
+    assert plan_orders(*args, outside=0.0)[0] == alone
+    assert plan_orders(np.array([0.9]), np.array([0.0]), 100.0, np.array([True]), ["equity"], CostModel(), TradingRules(), outside=5000.0)[0] <= 100.0

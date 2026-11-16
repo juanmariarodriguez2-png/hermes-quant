@@ -131,9 +131,11 @@ class Trading212Broker:
         self.refresh()
 
     def refresh(self) -> None:
-        summary = self.client.summary()
-        positions = self.client.positions()
+        # Working orders first, holdings after: an order placed by an earlier run is then either
+        # still in the first list or already in the second, never in neither.
         pending = self.client.pending_orders()
+        positions = self.client.positions()
+        summary = self.client.summary()
         self._summary, self._positions, self._pending = summary, positions, pending
 
     def cash(self) -> float:
@@ -170,6 +172,11 @@ class Trading212Broker:
         the ``followed`` markets. The account's value must count every holding, whoever bought it."""
         return sum(float(p["walletImpact"]["currentValue"]) for p in self._positions
                    if self._symbols.get(p["instrument"]["ticker"]) not in followed and float(p["quantity"]) > 0)
+
+    def holdings(self) -> dict[str, tuple[float, float]]:
+        """Every position in the account, followed or not: ticker -> (shares, value in the account's currency)."""
+        return {p["instrument"]["ticker"]: (float(p["quantity"]), float(p["walletImpact"]["currentValue"]))
+                for p in self._positions if float(p["quantity"]) > 0}
 
     def account_id(self) -> str:
         return str(self._summary.get("id", ""))
@@ -256,8 +263,6 @@ class Trading212Broker:
             side = "buy" if quantity > 0 else "sell"
             return Fill(symbol, 0.0, price, 0.0, 0.0, "dry", f"would {side} {abs(quantity)} {ticker}")
         assert self.client.env != "live" or self.armed, "live trading requires arming"
-        if self._open_now is not None and not self._open_now(symbol):
-            return Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", "its exchange is closed right now")
         # Both sources are needed: a timed-out request might already be fully filled.
         try:
             pending = self.client.pending_orders()
@@ -266,8 +271,11 @@ class Trading212Broker:
             before = {o["id"] for o in pending}
             before.update(h["order"]["id"] for h in self.client.history(ticker))
             held_before = sum(float(p["quantity"]) for p in self._positions if p["instrument"]["ticker"] == ticker)
-        except Trading212Error as exc:
-            return Fill(symbol, 0.0, price, 0.0, 0.0, "rejected", f"could not snapshot earlier orders: {exc}")
+        except Trading212Error as exc:                         # nothing was sent: the market keeps its round
+            return Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", f"could not read earlier orders, so nothing was sent: {exc}")
+        # Asked last, after the reads above and their pacing: the answer must be about this very moment.
+        if self._open_now is not None and not self._open_now(symbol):
+            return Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", "its exchange is closed right now")
         try:
             order = self.client.market_order(ticker, quantity)
         except Trading212Error as exc:
@@ -338,9 +346,10 @@ class Trading212Broker:
             amount = notional * scale
             if n and self.armed:                               # an earlier purchase may have cost more than its reference price
                 try:
-                    self._summary = self.client.summary()
-                    amount = min(amount, max(0.0, self.available() * 0.99))
-                except Trading212Error as exc:
+                    # a budget check only: the account snapshot (cash with holdings) is replaced as a whole or not at all
+                    left = float(self.client.summary()["cash"]["availableToTrade"])
+                    amount = min(amount, max(0.0, left * 0.99))
+                except (Trading212Error, KeyError, TypeError, ValueError) as exc:
                     fills.append(Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", f"cash could not be re-read before buying: {exc}"))
                     continue
             fills.append(self._trade(symbol, self._round_down(amount / price), price))

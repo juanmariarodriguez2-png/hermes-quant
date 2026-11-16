@@ -360,7 +360,8 @@ def test_refresh_reads_each_account_endpoint_once_and_account_views_use_wallet_v
     exchange = FakeTrading212(100, {"SPY_EU_EQ": 2, "NVDA_US_EQ": 3, "UNKNOWN": 4})
     exchange.reserved = 12
     b = broker(exchange)
-    assert exchange.log == [("summary",), ("positions",), ("pending_orders",)]
+    # working orders are read before holdings, so an order from an earlier run shows up in one list or the other
+    assert exchange.log == [("pending_orders",), ("positions",), ("summary",)]
     assert b.cash() == 100 and b.available() == 88
     assert b.units() == {"SPY": 2, "NVDA": 3} and b.prices() == pytest.approx(PRICES)
     assert b.unrecognised() == {"UNKNOWN": 4}

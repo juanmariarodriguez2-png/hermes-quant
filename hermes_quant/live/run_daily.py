@@ -158,7 +158,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     if venue_name not in ("kraken", "trading212"):
         raise ValueError(f"HERMES_VENUE must be kraken or trading212, not {venue_name!r}")
     armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
-    max_order = float(os.environ.get("HERMES_MAX_ORDER_EUR", "100"))
+    max_order = float(os.environ.get("HERMES_MAX_ORDER_EUR", "100")) if mode == "live" else 100.0
     if venue is None and broker is None and venue_name == "trading212":
         # Read first, before any work: if the account cannot be reached there is nothing to do today.
         client = Trading212Client(os.environ["T212_API_KEY"], os.environ["T212_API_SECRET"], env=os.environ.get("T212_ENV", "demo"))
@@ -311,8 +311,19 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     flow = 0.0
     if mode == "live" and state.get("mode") == "live" and not is_new and not outage:
         held_before = state.get("units") or {}
-        expected = (float(state.get("cash") or 0.0) + float(state.get("other_value") or 0.0)
-                    + float(np.nansum([held_before.get(s, 0.0) * prices.get(s, np.nan) for s in symbols])))
+        expected = float(state.get("cash") or 0.0) + float(np.nansum([held_before.get(s, 0.0) * prices.get(s, np.nan) for s in symbols]))
+        if on_venue:
+            # Trading 212 values every holding itself, so yesterday's holdings are repriced share by
+            # share, the ones this run does not follow included: a fall in any of them is a loss,
+            # not money leaving. A holding sold since then is counted at what it was last worth.
+            now_held, symbol_of = venue.broker.holdings(), {i.ticker: s for s, i in venue.listings.items()}
+            expected = float(state.get("cash") or 0.0)
+            for ticker, (shares, worth) in (state.get("holdings") or {}).items():
+                today = now_held.get(ticker)
+                each = today[1] / today[0] if today else prices.get(symbol_of.get(ticker), np.nan)
+                expected += shares * each if np.isfinite(each) else worth
+            if "holdings" not in state:                     # a record from before holdings were kept: nothing to compare with
+                expected = nav
         gap = nav - expected
         if abs(gap) > max(FLOW_MIN_EUR, FLOW_SHARE * max(expected, nav)):
             flow = gap
@@ -348,7 +359,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     if outage:
         orders = np.zeros(len(symbols))
     else:
-        orders = plan_orders(target, value, cash, tradable & ~by_hand, classes, costs, rules)
+        orders = plan_orders(target, value, cash, tradable & ~by_hand, classes, costs, rules, outside=other_holdings())
     order_map = {s: float(o) for s, o in zip(symbols, orders) if o != 0}
     fills = []
     if order_map:
@@ -362,7 +373,9 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
                 data_errors["broker"] = f"balances could not be re-read after trading: {exc!r}"[:200]
     if on_venue:
         prices.update(venue.broker.prices())                # what was just bought is now valued by the account itself
-        done.update({f.symbol: bar for f in fills if f.status != "skipped"})
+        # A round is used up by an order that reached the exchange, or may have ("rejected" covers a
+        # request whose fate is unknown). Not by one that was never sent: skipped, or a dry run.
+        done.update({f.symbol: bar for f in fills if f.status in ("filled", "partial", "unfilled", "rejected")})
         state["traded"] = {s: b for s, b in done.items() if b == bar}
     units, cash, value, nav = account()
 
@@ -371,7 +384,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     manual_orders = []
     if by_hand.any() and not outage:
         quoted = managed & np.array([s not in frozen and np.isfinite(prices.get(s, np.nan)) for s in symbols])
-        pending = plan_orders(target, value, cash, by_hand & quoted, classes, costs, rules)
+        pending = plan_orders(target, value, cash, by_hand & quoted, classes, costs, rules, outside=other_holdings())
         manual_orders = [{"symbol": s, "name": names.get(s, s), "class": class_of[s], "notional_eur": float(n),
                           "pair": by_symbol[s].kraken_pair, "market_open": bool(is_open(s))}
                          for s, n in zip(symbols, pending) if n != 0]
@@ -386,7 +399,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     bench = {key: state["initial_capital"] * level[sym] / state["benchmarks"][key]
              for key, sym in (("btc", "BTC"), ("spx", "SPY")) if key in state["benchmarks"] and sym in level}
     if on_venue:
-        state["other_value"] = other_holdings()
+        state["holdings"] = {ticker: [shares, worth] for ticker, (shares, worth) in venue.broker.holdings().items()}
     state.update(cash=cash, units=units, mode=mode, last_bar=bar, runs=int(state.get("runs", 0)) + (0 if already_ran else 1),
                  last_run=now.strftime("%Y-%m-%dT%H:%M:%SZ"), nav=nav)
     state_path.write_text(json.dumps(state, indent=2))

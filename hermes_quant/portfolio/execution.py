@@ -57,7 +57,7 @@ class TradingRules:
 
 
 def plan_orders(target: np.ndarray, position_value: np.ndarray, cash: float, tradable: np.ndarray,
-                classes: list[str], costs: CostModel, rules: TradingRules) -> np.ndarray:
+                classes: list[str], costs: CostModel, rules: TradingRules, outside: float = 0.0) -> np.ndarray:
     """Signed euro notional to trade per asset (positive = buy).
 
     Parameters
@@ -66,10 +66,13 @@ def plan_orders(target: np.ndarray, position_value: np.ndarray, cash: float, tra
     position_value : current euro value of each holding.
     cash : free euros.
     tradable : whether each asset can be traded right now (market open, price valid).
+    outside : euros the account holds in things that are not on this list (never traded
+        here). They are part of what the account is worth, so targets are fractions of
+        a total that includes them. Zero in the backtest and on Kraken.
     """
     target = np.asarray(target, dtype=float)
     position_value = np.asarray(position_value, dtype=float)
-    nav = cash + float(position_value.sum())
+    nav = cash + float(position_value.sum()) + float(outside)
     n = len(target)
     if nav <= 0:
         return np.zeros(n)

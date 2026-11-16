@@ -75,8 +75,10 @@ class PaperBroker:
         return fills
 
 
-# Kraken's balance keys for the oldest assets carry legacy X/Z prefixes; balances held
-# in the flexible "earn" wallet carry an ".F" suffix.
+# Kraken's balance keys for the oldest assets carry legacy X/Z prefixes, and a suffix says
+# where a balance sits: ".T" tokenized assets (every xStock: "SPYx.T"), ".F" earning
+# automatically, ".B" / ".M" / ".S" yield-bearing, opt-in rewards and staked.
+SUFFIXES = ("", ".T", ".F", ".B", ".M", ".S")
 _LEGACY = {"BTC": ("XXBT", "XBT"), "ETH": ("XETH", "ETH"), "XRP": ("XXRP", "XRP"),
            "LTC": ("XLTC", "LTC"), "DOGE": ("XXDG", "XDG")}
 FX_PAIR = "EURUSD"
@@ -142,7 +144,7 @@ class KrakenBroker:
         self._balances = self.client.balances()
 
     def _balance(self, *names: str) -> float:
-        wanted = {n.upper() for n in names} | {n.upper() + ".F" for n in names}
+        wanted = {(n + suffix).upper() for n in names for suffix in SUFFIXES}
         return sum(v for k, v in self._balances.items() if k.upper() in wanted)
 
     def cash(self) -> float:

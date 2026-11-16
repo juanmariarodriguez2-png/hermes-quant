@@ -449,3 +449,12 @@ def test_the_published_schedule_matches_the_workflow_and_assets_say_how_to_follo
     spy = next(a for a in out["model"]["assets"] if a["symbol"] == "SPY")
     assert (btc["pair"], btc["quote"], btc["tokenized"]) == ("XBTEUR", "EUR", False)
     assert (spy["pair"], spy["quote"], spy["tokenized"]) == ("SPYxUSD", "USD", True)
+
+
+def test_tokenized_holdings_are_found_under_the_names_kraken_really_uses():
+    """Taken from the account on 16 Nov 2026: xStocks bought by hand sit under "<name>.T".
+    Missed, they looked like money gone and tripped the circuit breaker."""
+    ex = FakeExchange({"GLDx.T": 0.17549, "QQQx.T": 0.02303, "SLVx.T": 0.205367, "SPYx.T": 0.048593, "XETH": 1.4409e-06, "ZEUR": 121.4709})
+    b = KrakenBroker(ex, LIVE_BY_SYMBOL, pair_rules=RULES, pause=0.0)
+    assert b.units() == {"ETH": 1.4409e-06, "SPY": 0.048593, "QQQ": 0.02303, "GLD": 0.17549, "SLV": 0.205367}
+    assert b.cash() == pytest.approx(121.4709) and b.usd_cash() == 0.0

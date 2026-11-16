@@ -1,6 +1,6 @@
 {
   "meta": {
-    "generated_at": "2026-11-16T20:49:03Z",
+    "generated_at": "2026-11-16T22:01:29Z",
     "bar_date": "2026-11-15",
     "version": "2.0.0",
     "data_errors": {},
@@ -15,12 +15,12 @@
     "profile": "balanced",
     "inception": "2026-11-14",
     "initial_capital": 233.47,
-    "nav": 232.24942661370443,
+    "nav": 232.34702432260536,
     "cash": 121.4709,
-    "invested_pct": 0.4769808400774226,
-    "return_since_inception": -0.005227966703626019,
+    "invested_pct": 0.4772005350439002,
+    "return_since_inception": -0.004809935655093356,
     "peak_nav": 233.473281692428,
-    "drawdown": -0.00524194918515708,
+    "drawdown": -0.004823924012454461,
     "halted": false,
     "target_date": "2026-11-13",
     "target_refreshed_today": false,
@@ -31,40 +31,44 @@
         "name": "S&P 500",
         "class": "equity",
         "units": 0.048593,
-        "price": 672.0659006759278,
-        "value": 32.65769831154535,
-        "weight": 0.14061476399622813,
-        "target": 0.15932363425928617
+        "price": 672.8513270713456,
+        "value": 32.6958645363779,
+        "weight": 0.1407199624428195,
+        "target": 0.15932363425928617,
+        "managed": true
       },
       {
         "symbol": "QQQ",
         "name": "Nasdaq 100",
         "class": "equity",
         "units": 0.02303,
-        "price": 601.7212048433905,
-        "value": 13.857639347543282,
-        "weight": 0.059667055155285274,
-        "target": 0.06930978094921987
+        "price": 601.9013395801587,
+        "value": 13.861787850531055,
+        "weight": 0.0596598466924391,
+        "target": 0.06930978094921987,
+        "managed": true
       },
       {
         "symbol": "GLD",
         "name": "Gold",
         "class": "real",
         "units": 0.17549,
-        "price": 321.02926594070397,
-        "value": 56.33742587993414,
-        "weight": 0.2425729385056308,
-        "target": 0.27663671035230863
+        "price": 321.28545111328435,
+        "value": 56.38238381587027,
+        "weight": 0.2426645401646521,
+        "target": 0.27663671035230863,
+        "managed": true
       },
       {
         "symbol": "SLV",
         "name": "Silver",
         "class": "real",
         "units": 0.205367,
-        "price": 38.58155254132438,
-        "value": 7.9233777007541635,
-        "weight": 0.03411581167833387,
-        "target": 0.04375522043702116
+        "price": 38.63176328777093,
+        "value": 7.933689331119653,
+        "weight": 0.03414586158032312,
+        "target": 0.04375522043702116,
+        "managed": true
       }
     ],
     "orders_today": [],

@@ -12,6 +12,7 @@ still come from the same price series as before.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import time
@@ -112,7 +113,8 @@ class Trading212Broker:
     """Read balances before sizing purchases; never retry an ambiguous placement."""
 
     def __init__(self, client, listings: dict[str, Listing], *, armed: bool = False, max_order_eur: float = 100.0,
-                 wait_seconds: float = 30.0, pause: float = 1.0, min_order_eur: float = 1.0, decimals: int = 4, sleep=time.sleep):
+                 wait_seconds: float = 30.0, pause: float = 1.0, min_order_eur: float = 1.0, decimals: int = 4, sleep=time.sleep,
+                 open_now=None):
         if any(not math.isfinite(v) or v < 0 for v in (max_order_eur, wait_seconds, pause, min_order_eur)):
             raise ValueError("order limits and waiting times must be finite and nonnegative")
         if not isinstance(decimals, int) or not 0 <= decimals <= 12:
@@ -122,6 +124,9 @@ class Trading212Broker:
         self.client, self.listings, self.armed = client, listings, armed
         self.max_order_eur, self.min_order_eur, self.decimals = max_order_eur, min_order_eur, decimals
         self.wait_seconds, self.pause, self._sleep = wait_seconds, pause, sleep
+        # Asked again right before each order: a run can take minutes, and an order sent after
+        # the close would sit in a queue until the next session instead of trading now.
+        self._open_now = open_now
         self._symbols = {i.ticker: s for s, i in listings.items()}
         self.refresh()
 
@@ -159,6 +164,15 @@ class Trading212Broker:
     def unrecognised(self) -> dict[str, float]:
         return {p["instrument"]["ticker"]: float(p["quantity"]) for p in self._positions
                 if p["instrument"]["ticker"] not in self._symbols}
+
+    def other_value(self, followed: set[str]) -> float:
+        """What the account says its remaining holdings are worth: everything that is not one of
+        the ``followed`` markets. The account's value must count every holding, whoever bought it."""
+        return sum(float(p["walletImpact"]["currentValue"]) for p in self._positions
+                   if self._symbols.get(p["instrument"]["ticker"]) not in followed and float(p["quantity"]) > 0)
+
+    def account_id(self) -> str:
+        return str(self._summary.get("id", ""))
 
     def _round_down(self, quantity: float) -> float:
         return float(Decimal(str(quantity)).quantize(Decimal(10) ** -self.decimals, rounding=ROUND_DOWN))
@@ -242,6 +256,8 @@ class Trading212Broker:
             side = "buy" if quantity > 0 else "sell"
             return Fill(symbol, 0.0, price, 0.0, 0.0, "dry", f"would {side} {abs(quantity)} {ticker}")
         assert self.client.env != "live" or self.armed, "live trading requires arming"
+        if self._open_now is not None and not self._open_now(symbol):
+            return Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", "its exchange is closed right now")
         # Both sources are needed: a timed-out request might already be fully filled.
         try:
             pending = self.client.pending_orders()
@@ -304,19 +320,34 @@ class Trading212Broker:
             if exit_wanted and available * price <= self.max_order_eur:
                 quantity = available
             fills.append(self._trade(symbol, -quantity, price))
-        self.refresh()
         buys = {s: n for s, n in valid.items() if n >= 0}
+        try:
+            self.refresh()
+        except Trading212Error as exc:                         # without fresh balances a purchase cannot be sized safely
+            return fills + [Fill(s, 0.0, price_eur[s], 0.0, 0.0, "skipped", f"balances could not be re-read after selling: {exc}")
+                            for s in buys]
         total = sum(buys.values())
         available = self.available()
         budget = max(0.0, available * 0.99) if math.isfinite(available) else 0.0
         scale = min(1.0, budget / total) if total else 0.0
-        for symbol, notional in buys.items():
+        for n, (symbol, notional) in enumerate(buys.items()):
             price = price_eur[symbol]
             if symbol in self.pending():
                 fills.append(Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", "an earlier order is still working"))
                 continue
-            fills.append(self._trade(symbol, self._round_down(notional * scale / price), price))
-        self.refresh()
+            amount = notional * scale
+            if n and self.armed:                               # an earlier purchase may have cost more than its reference price
+                try:
+                    self._summary = self.client.summary()
+                    amount = min(amount, max(0.0, self.available() * 0.99))
+                except Trading212Error as exc:
+                    fills.append(Fill(symbol, 0.0, price, 0.0, 0.0, "skipped", f"cash could not be re-read before buying: {exc}"))
+                    continue
+            fills.append(self._trade(symbol, self._round_down(amount / price), price))
+        try:
+            self.refresh()
+        except Trading212Error:                                # the orders are done; the caller re-reads the account itself
+            pass
         return fills
 
 
@@ -350,12 +381,19 @@ class Venue:
     name = "trading212"
 
     def __init__(self, client, *, armed: bool = False, max_order_eur: float = 100.0, path: Path | None = None,
-                 quote=yahoo.price_eur, sleep=time.sleep):
+                 quote=yahoo.price_eur, sleep=time.sleep, clock=None):
         wanted, preference, self._quotes = load_markets(path)
         self.listings, self.problems = resolve(wanted, client.instruments(), preference)
         self._exchanges = client.exchanges()
-        self.broker = Trading212Broker(client, self.listings, armed=armed, max_order_eur=max_order_eur, sleep=sleep)
+        self.clock = clock or (lambda: datetime.now(timezone.utc))
+        self.broker = Trading212Broker(client, self.listings, armed=armed, max_order_eur=max_order_eur, sleep=sleep,
+                                       open_now=lambda symbol: self.open(symbol, self.clock()))
         self.env, self._quote = client.env, quote
+        # Practice money and real money are different accounts and must never share a record:
+        # the folder is named after the environment and a short, non-reversible tag of the
+        # account number (the number itself stays out of the repository).
+        tag = hashlib.sha256(self.broker.account_id().encode()).hexdigest()[:8]
+        self.record = f"trading212-{self.env}-{tag}"
 
     def open(self, symbol: str, now: datetime) -> bool:
         listing = self.listings.get(symbol)

@@ -58,8 +58,18 @@ def sandbox(tmp_path):
     return tmp_path
 
 
-def account(cash=1000.0, positions=None, *, armed=True, quotes=REFERENCE, instruments=INSTRUMENTS):
-    api = FakeTrading212(cash=cash, positions=positions)
+class Account(FakeTrading212):
+    """The simulated API, with the account number a real summary carries."""
+
+    number = 4001
+
+    def summary(self):
+        return {**super().summary(), "id": self.number}
+
+
+def account(cash=1000.0, positions=None, *, armed=True, quotes=REFERENCE, instruments=INSTRUMENTS, env="demo", number=4001, kind=Account):
+    api = kind(cash=cash, positions=positions, env=env)
+    api.number = number
     api.instrument_list, api.exchange_list = [dict(i) for i in instruments], EXCHANGES
     api.fill_prices, api.fx = dict(FILL), {"EUR": EUR, "USD": USD}
 
@@ -69,9 +79,14 @@ def account(cash=1000.0, positions=None, *, armed=True, quotes=REFERENCE, instru
     return api, t212.Venue(api, armed=armed, max_order_eur=500.0, quote=quote, sleep=lambda seconds: None)
 
 
-def run(sandbox, venue, now, **kw):
+def run(sandbox, venue, now, clock=None, **kw):
+    venue.clock = lambda: clock or now                         # the exchange's clock at the moment each order goes out
     return run_daily.run(mode="live", offline=True, now=now, venue=venue, basket=kw.pop("basket", favourites.Basket()),
                          live_dir=sandbox / "live", site_dir=sandbox / "site", **kw)
+
+
+def record(sandbox, venue):
+    return sandbox / "live" / venue.record / "state.json"
 
 
 def test_the_models_markets_resolve_to_european_funds_and_us_shares_to_their_home_listing():
@@ -105,12 +120,13 @@ def test_the_account_is_valued_with_the_brokers_own_prices_and_kept_apart_from_k
     worth = api.cash_balance + sum(q * FILL[t] * (EUR if t.endswith("d_EQ") or t.endswith("m_EQ") else USD) for t, q in api.holdings.items())
     assert a["nav"] == pytest.approx(worth) and a["nav"] == pytest.approx(1000.0, rel=5e-3)     # nothing lost but costs
     assert a["flow_today"] == 0.0 and a["initial_capital"] == pytest.approx(1000.0)
-    assert (sandbox / "live" / "trading212" / "state.json").exists() and not (sandbox / "live" / "state.json").exists()
-    state = json.loads((sandbox / "live" / "trading212" / "state.json").read_text())
+    assert record(sandbox, venue).exists() and not (sandbox / "live" / "state.json").exists()
+    assert "4001" not in venue.record and venue.record.startswith("trading212-demo-")          # the account number stays private
+    state = json.loads(record(sandbox, venue).read_text())
     assert set(state["units"]) == set(held) and state["mode"] == "live"
 
     state["last_bar"] = None                                   # the next day: buying was not a flow, and nothing else is due
-    (sandbox / "live" / "trading212" / "state.json").write_text(json.dumps(state))
+    record(sandbox, venue).write_text(json.dumps(state))
     sent = len(api.sent)
     later = run(sandbox, venue, AFTERNOON)["account"]
     assert later["flow_today"] == 0.0 and not later["halted"] and len(api.sent) == sent
@@ -154,7 +170,7 @@ def test_an_unarmed_venue_sends_nothing_and_says_what_it_would_do(sandbox):
 def test_the_circuit_breaker_sells_through_the_venue(sandbox):
     api, venue = account()
     run(sandbox, venue, AFTERNOON)
-    path = sandbox / "live" / "trading212" / "state.json"
+    path = record(sandbox, venue)
     state = json.loads(path.read_text())
     state.update(peak_nav=state["nav"] * 1.5, last_bar=None)
     path.write_text(json.dumps(state))
@@ -163,11 +179,102 @@ def test_the_circuit_breaker_sells_through_the_venue(sandbox):
     assert sum(q * FILL[t] for t, q in api.holdings.items()) == pytest.approx(0.0, abs=1.0)
 
 
-def test_a_holding_the_run_does_not_follow_is_reported_and_never_touched(sandbox):
+def test_a_holding_the_run_does_not_follow_is_reported_valued_and_never_touched(sandbox):
     api, venue = account(positions={"TSLA_US_EQ": 0.5, "ZZZ_US_EQ": 3.0})      # no list of stocks in this run
     a = run(sandbox, venue, AFTERNOON)["account"]
     assert api.holdings["TSLA_US_EQ"] == 0.5 and not [s for s in api.sent if s["ticker"] in ("TSLA_US_EQ", "ZZZ_US_EQ")]
     assert a["unrecognised"] == {"TSLA_US_EQ": 0.5, "ZZZ_US_EQ": 3.0}
+    others = 0.5 * 380.0 * USD + 3.0 * 7.0                    # as the account itself values them
+    assert a["other_value"] == pytest.approx(others)
+    followed = sum(p["value"] for p in a["positions"])
+    assert a["nav"] == pytest.approx(api.cash_balance + followed + others)             # every holding counts, whoever bought it
+    assert a["initial_capital"] == pytest.approx(1000.0 + others, rel=5e-3)
+
+    state = json.loads(record(sandbox, venue).read_text())
+    state["last_bar"] = None
+    record(sandbox, venue).write_text(json.dumps(state))
+    api.holdings["ZZZ_US_EQ"] = 1.0                           # the owner sells two thirds of it for cash
+    api.cash_balance += 2.0 * 7.0
+    venue.broker.refresh()                                     # (a real run starts from a fresh read of the account)
+    later = run(sandbox, venue, AFTERNOON)["account"]
+    assert later["other_value"] == pytest.approx(others - 2.0 * 7.0)
+    assert later["flow_today"] == 0.0 and not later["halted"]                          # money changed shape, none came or went
+
+
+def test_practice_money_and_real_money_never_share_a_record(sandbox):
+    demo_api, demo = account(env="demo", number=4001)
+    assert len(run(sandbox, demo, AFTERNOON)["account"]["orders_today"]) >= 2
+    live_api, live = account(env="live", number=9002)
+    assert live.record != demo.record and live.record.startswith("trading212-live-")
+    first = run(sandbox, live, AFTERNOON)["account"]            # same daily candle: the practice run must not have used it up
+    assert len(first["orders_today"]) >= 2 and live_api.sent and first["venue_env"] == "live"
+    assert record(sandbox, demo).exists() and record(sandbox, live).exists()
+
+
+def test_a_market_keeps_its_round_until_an_order_is_really_sent_for_it(sandbox):
+    api, venue = account(cash=3.0)                             # not enough for a single ticket yet
+    morning = run(sandbox, venue, MORNING)["account"]
+    assert api.sent == [] and morning["orders_today"] == []
+    api.cash_balance += 1000.0                                 # the transfer arrives at midday
+    venue.broker.refresh()
+    afternoon = run(sandbox, venue, AFTERNOON)["account"]
+    assert {"SPY", "GLD"} <= {o["symbol"] for o in afternoon["orders_today"]} and api.sent
+    assert afternoon["flow_today"] == pytest.approx(1000.0) and afternoon["initial_capital"] == pytest.approx(1003.0)
+
+
+def test_an_account_with_no_money_yet_does_not_break_the_run(sandbox):
+    api, venue = account(cash=0.0)
+    a = run(sandbox, venue, AFTERNOON)["account"]
+    assert a["nav"] == 0.0 and a["orders_today"] == [] and a["drawdown"] == 0.0 and a["return_since_inception"] == 0.0 and not a["halted"]
+
+
+def test_an_order_is_not_sent_once_the_exchange_has_closed_and_the_round_is_kept(sandbox):
+    api, venue = account()
+    after_the_close = datetime(2026, 11, 16, 21, 30, tzinfo=timezone.utc)
+    late = run(sandbox, venue, AFTERNOON, clock=after_the_close)["account"]       # the run began in time; the orders would not
+    assert api.sent == [] and late["orders_today"] and all(o["status"] == "skipped" and "closed" in o["detail"] for o in late["orders_today"])
+    assert json.loads(record(sandbox, venue).read_text())["traded"] == {}
+    again = run(sandbox, venue, AFTERNOON)["account"]
+    assert {"SPY", "GLD"} <= {o["symbol"] for o in again["orders_today"] if o["status"] == "filled"}
+
+
+class LosesContact(Account):
+    """The account stops answering once the first order has gone through."""
+
+    def summary(self):
+        if self.sent:
+            from hermes_quant.data.trading212 import Trading212Error
+            raise Trading212Error("gateway timeout", status=504)
+        return super().summary()
+
+
+def test_what_was_sent_is_written_down_even_if_the_account_cannot_be_read_afterwards(sandbox):
+    api, venue = account(kind=LosesContact)
+    out = run(sandbox, venue, AFTERNOON)
+    a = out["account"]
+    assert len(api.sent) == 1                                  # the first purchase went; the rest were not sized blind
+    sent = api.sent[0]["ticker"]
+    filled = [o for o in a["orders_today"] if o["status"] == "filled"]
+    assert len(filled) == 1 and all("could not be re-read" in o["detail"] for o in a["orders_today"] if o["status"] == "skipped")
+    assert "broker" in out["meta"]["data_errors"]
+    state = json.loads(record(sandbox, venue).read_text())
+    assert list(state["traded"]) == [filled[0]["symbol"]] and venue.listings[filled[0]["symbol"]].ticker == sent
+    api.sent.clear()                                           # contact is back (the simulated failure is tied to the log)
+    api_orders = len(api.orders)
+    again = run(sandbox, venue, AFTERNOON)["account"]
+    assert filled[0]["symbol"] not in {o["symbol"] for o in again["orders_today"]}     # not bought a second time
+    assert len(api.orders) > api_orders                        # the others get their round now
+
+
+def test_cash_is_read_again_before_each_purchase_so_a_dear_fill_cannot_overspend():
+    api = Account(cash=100.0)
+    api.instrument_list, api.exchange_list, api.fx = [dict(i) for i in INSTRUMENTS], EXCHANGES, {"EUR": EUR, "USD": USD}
+    api.fill_prices = {**FILL, "SXR8d_EQ": 734.0 * 1.3}       # the first purchase fills 30% above its reference price
+    listings, _ = t212.resolve({"SPY": {"isin": ["IE00B5BMR087"]}, "QQQ": {"isin": ["IE00B53SZB19"]}}, api.instrument_list)
+    broker = t212.Trading212Broker(api, listings, armed=True, max_order_eur=500.0, sleep=lambda seconds: None)
+    fills = broker.execute({"SPY": 50.0, "QQQ": 50.0}, {"SPY": 734.0, "QQQ": 1437.0})   # the simulated exchange asserts on overspending
+    assert [f.status for f in fills] == ["filled", "filled"] and api.cash_balance >= 0.0
+    assert abs(fills[1].notional_eur) < 40.0                   # the second was cut to what was left
 
 
 def test_a_stock_the_owner_holds_is_valued_while_the_basket_is_off(sandbox):

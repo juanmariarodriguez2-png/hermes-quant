@@ -157,7 +157,14 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     venue_name = (getattr(venue, "name", None) or os.environ.get("HERMES_VENUE", "kraken")) if mode == "live" else "kraken"
     if venue_name not in ("kraken", "trading212"):
         raise ValueError(f"HERMES_VENUE must be kraken or trading212, not {venue_name!r}")
-    book_dir = live_dir if venue_name == "kraken" else live_dir / venue_name
+    armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
+    max_order = float(os.environ.get("HERMES_MAX_ORDER_EUR", "100"))
+    if venue is None and broker is None and venue_name == "trading212":
+        # Read first, before any work: if the account cannot be reached there is nothing to do today.
+        client = Trading212Client(os.environ["T212_API_KEY"], os.environ["T212_API_SECRET"], env=os.environ.get("T212_ENV", "demo"))
+        venue = t212.Venue(client, armed=armed, max_order_eur=max_order)
+    on_venue = venue is not None                            # Trading 212: its own instruments, prices and hours
+    book_dir = live_dir / venue.record if on_venue else live_dir
     book_dir.mkdir(parents=True, exist_ok=True)
 
     # The owner's list of single stocks. A list that cannot be read is reported and
@@ -253,12 +260,6 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     # 4. account, risk checks, orders ---------------------------------------------------
     last_close = panel.close.ffill().iloc[t]                # a missing candle must not zero a holding
     last_close = pd.concat([last_close, pd.Series(stock_close, dtype=float)])
-    armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
-    max_order = float(os.environ.get("HERMES_MAX_ORDER_EUR", "100"))
-    if venue is None and broker is None and venue_name == "trading212":
-        client = Trading212Client(os.environ["T212_API_KEY"], os.environ["T212_API_SECRET"], env=os.environ.get("T212_ENV", "demo"))
-        venue = t212.Venue(client, armed=armed, max_order_eur=max_order)
-    on_venue = venue is not None                            # Trading 212: its own instruments, prices and hours
     if on_venue:
         broker = venue.broker
     # Kraken takes no tokenized-stock orders by API from accounts in the European Economic
@@ -286,12 +287,17 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     def is_open(symbol: str) -> bool:
         return venue.open(symbol, now) if on_venue else market_open(by_symbol[symbol], now)
 
+    def other_holdings() -> float:
+        """On Trading 212 the account values every holding itself, so the ones this run does not
+        follow (bought by the owner, or no longer on the map) still count in the account's value."""
+        return float(venue.broker.other_value(set(symbols))) if on_venue else 0.0
+
     def account() -> tuple[dict, float, np.ndarray, float]:
         units = broker.units()
         idle_usd = broker.usd_cash() / eurusd if (hasattr(broker, "usd_cash") and eurusd > 0) else 0.0
         cash = broker.cash() + idle_usd
         value = np.nan_to_num(np.array([units.get(s, 0.0) * prices.get(s, np.nan) for s in symbols]))
-        return units, cash, value, cash + float(value.sum())
+        return units, cash, value, cash + float(value.sum()) + other_holdings()
 
     units, cash, value, nav = account()
     is_new = state.pop("new", False)
@@ -305,7 +311,8 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     flow = 0.0
     if mode == "live" and state.get("mode") == "live" and not is_new and not outage:
         held_before = state.get("units") or {}
-        expected = float(state.get("cash") or 0.0) + float(np.nansum([held_before.get(s, 0.0) * prices.get(s, np.nan) for s in symbols]))
+        expected = (float(state.get("cash") or 0.0) + float(state.get("other_value") or 0.0)
+                    + float(np.nansum([held_before.get(s, 0.0) * prices.get(s, np.nan) for s in symbols])))
         gap = nav - expected
         if abs(gap) > max(FLOW_MIN_EUR, FLOW_SHARE * max(expected, nav)):
             flow = gap
@@ -321,7 +328,7 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         unrecognised.update({venue.listings[s].ticker: q for s, q in units.items() if s not in symbols})
 
     state["peak_nav"] = max(float(state.get("peak_nav") or nav), nav)
-    drawdown = nav / state["peak_nav"] - 1.0
+    drawdown = nav / state["peak_nav"] - 1.0 if state["peak_nav"] > 0 else 0.0      # an account not funded yet has no peak
     if drawdown <= -MAX_DRAWDOWN_HALT and not state["halted"] and not outage:
         state["halted"] = True
         state["halt_reason"] = f"drawdown {drawdown:.1%} from peak on {bar}"
@@ -329,21 +336,19 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
 
     already_ran = state.get("last_bar") == bar
     frozen = set(stale) | set(stock_stale)
-    # One round of orders per market per daily candle. The round is used up only by a run
-    # in which that market could trade: a run that finds an exchange shut (at night, on a
-    # weekend) leaves its markets for a later run on the same candle.
-    done = dict(state.get("traded") or {}) if already_ran else {}
-    if already_ran and "traded" not in state:               # a state file from before this bookkeeping
-        done = {s: bar for s in symbols}
-    fresh = np.array([done.get(s) != bar for s in symbols])
+    # One round of orders per daily candle. On Kraken, whose markets are open when the run
+    # happens, that is one run: a second run for the same candle trades nothing. On Trading 212
+    # a share only trades while its exchange is open, so the round is kept per market and is
+    # used up only by an order that was really sent: a run at night, or one that finds an
+    # exchange shut, leaves that market for a later run on the same candle.
+    done = dict(state.get("traded") or {}) if (on_venue and already_ran) else {}
+    fresh = np.array([done.get(s) != bar for s in symbols]) if on_venue else np.full(len(symbols), not already_ran)
     tradable = managed & fresh & np.array([is_open(s) and s not in frozen and np.isfinite(prices.get(s, np.nan))
                                            for s in symbols])
     if outage:
         orders = np.zeros(len(symbols))
     else:
         orders = plan_orders(target, value, cash, tradable & ~by_hand, classes, costs, rules)
-        done.update({s: bar for s, ok in zip(symbols, tradable & ~by_hand) if ok})
-    state["traded"] = {s: b for s, b in done.items() if b == bar}
     order_map = {s: float(o) for s, o in zip(symbols, orders) if o != 0}
     fills = []
     if order_map:
@@ -351,7 +356,14 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
             fills = broker.execute(order_map, prices, by_symbol, costs)
         else:
             fills = broker.execute(order_map, prices, by_symbol, costs, eurusd=eurusd)
-            broker.refresh()
+            try:
+                broker.refresh()
+            except Exception as exc:  # noqa: BLE001 - the orders are done: what was sent must still be written down
+                data_errors["broker"] = f"balances could not be re-read after trading: {exc!r}"[:200]
+    if on_venue:
+        prices.update(venue.broker.prices())                # what was just bought is now valued by the account itself
+        done.update({f.symbol: bar for f in fills if f.status != "skipped"})
+        state["traded"] = {s: b for s, b in done.items() if b == bar}
     units, cash, value, nav = account()
 
     # What is left for the owner to place by hand, from the account as it now stands. It
@@ -373,12 +385,14 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
             state["benchmarks"][key] = level[symbol]
     bench = {key: state["initial_capital"] * level[sym] / state["benchmarks"][key]
              for key, sym in (("btc", "BTC"), ("spx", "SPY")) if key in state["benchmarks"] and sym in level}
+    if on_venue:
+        state["other_value"] = other_holdings()
     state.update(cash=cash, units=units, mode=mode, last_bar=bar, runs=int(state.get("runs", 0)) + (0 if already_ran else 1),
                  last_run=now.strftime("%Y-%m-%dT%H:%M:%SZ"), nav=nav)
     state_path.write_text(json.dumps(state, indent=2))
 
     equity_path = book_dir / "equity.csv"
-    row = {"date": bar, "nav": round(nav, 4), "cash": round(cash, 4), "invested": round(float(value.sum()), 4),
+    row = {"date": bar, "nav": round(nav, 4), "cash": round(cash, 4), "invested": round(float(value.sum()) + other_holdings(), 4),
            "btc_hold": round(bench.get("btc", np.nan), 4), "spx_hold": round(bench.get("spx", np.nan), 4),
            "positions": int(np.sum(value > 0.01))}
     equity = pd.read_csv(equity_path) if equity_path.exists() else pd.DataFrame(columns=list(row))
@@ -429,9 +443,10 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         "mode": mode, "armed": armed, "profile": profile, "inception": state["inception"],
         "venue": venue_name if mode == "live" else "paper", "venue_env": getattr(venue, "env", None), "unavailable": unavailable,
         "initial_capital": state["initial_capital"], "nav": nav, "cash": cash,
-        "invested_pct": float(value.sum() / nav) if nav else 0.0,
-        "return_since_inception": nav / state["initial_capital"] - 1.0, "peak_nav": state["peak_nav"],
-        "drawdown": nav / state["peak_nav"] - 1.0, "halted": state["halted"],
+        "invested_pct": float((value.sum() + other_holdings()) / nav) if nav else 0.0, "other_value": other_holdings(),
+        "return_since_inception": nav / state["initial_capital"] - 1.0 if state["initial_capital"] > 0 else 0.0,
+        "peak_nav": state["peak_nav"], "drawdown": nav / state["peak_nav"] - 1.0 if state["peak_nav"] > 0 else 0.0,
+        "halted": state["halted"],
         "target_date": state["target_date"], "target_refreshed_today": bool(refreshed),
         "next_target_refresh_in_days": max(0, rules.rebalance_every - (0 if refreshed else (age or 0))),
         "positions": positions, "equity": equity.to_dict(orient="records"),

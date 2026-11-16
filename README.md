@@ -76,7 +76,7 @@ There is one door for single stocks, and it is outside the model: the owner's **
 - **Survivorship-free crypto universe:** all 688 USDT markets Binance has ever listed, delisted ones included (Terra, FTX...). Membership is decided day by day from trailing volume.
 - **Trial registry:** 77 attempts are counted. The Deflated Sharpe Ratio on the design sample is 95% treating all of them as independent.
 - **Block bootstrap** for confidence intervals; Newey-West errors for regressions; ECB deposit rate for excess returns.
-- **88 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
+- **220 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
 - **Independent adversarial review** of the code by OpenAI Codex before the hold-out was opened: 16 findings, all addressed ([docs/RESEARCH.md](docs/RESEARCH.md#independent-review)).
 
 ## Run it
@@ -90,6 +90,8 @@ python -m pytest tests -q
 The GitHub Actions workflow in `.github/workflows/daily.yml` does this every night, commits the new state and publishes the dashboard. No server, no laptop, no API bill.
 
 Real trading is opt-in and has three locks: `HERMES_MODE=live`, Kraken API keys without withdrawal permission, and `HERMES_LIVE_ARMED=yes`. Until the third is set, every order is sent with Kraken's validate-only flag. A manual workflow, *Kraken connection check*, rehearses the day's orders against the real account with the validate flag and places nothing; run it before arming. No real order has been executed yet: what is verified is that Kraken accepts them. Details in [docs/GUIA.md](docs/GUIA.md).
+
+**A second venue, for accounts Kraken will not serve by API.** `HERMES_VENUE=trading212` sends every order through Trading 212's API instead: real shares, and for each of the model's funds the European fund that tracks the same index or metal (`config/trading212.json`; a European retail account cannot buy the US-listed ones). Orders go out only while the instrument's exchange is open, are sized by quantity from a reference price and read back from the broker's own history; a request that times out is looked up, never repeated. It keeps its own record under `data/live/trading212/` and starts on the practice account (`T212_ENV=demo`). Written with OpenAI Codex from the broker's API document and tested against a simulated API; not yet run against a funded account.
 
 One limit comes from the venue, not the model: Kraken takes no tokenized-stock orders by API from accounts in the European Economic Area, only by hand on kraken.com. On such an account (the default) the model trades crypto by itself and lists the equity, gold and silver orders for the owner to place; it never converts currency for an order it cannot send. Set `HERMES_TOKENIZED_API=yes` where the API does accept them. Buying by hand has a price: Kraken's Convert cost 1.07% all in when measured against the market, not the 0.38% the backtest assumes for the order book. Re-costed with that, the hold-out result is 10.9% a year (Sharpe 0.89), not 11.9%; the dashboard shows both.
 
@@ -112,11 +114,11 @@ hermes_quant/
   regime/       hidden Markov model, turbulence and absorption gauges
   portfolio/    hierarchical risk parity, order planning shared by backtest and live
   backtest/     causal simulator, metrics, statistical tests
-  live/         daily runner, price store, paper broker, Kraken broker, monitors, favourites basket
+  live/         daily runner, price store, paper broker, Kraken and Trading 212 brokers, monitors, favourites basket
   model.py      the model: features and target weights
 research/       numbered scripts, one per research step, and their results
-tests/          88 tests
-config/         the owner's list of single stocks for the optional basket
+tests/          220 tests
+config/         the owner's list of single stocks, and the map of markets to Trading 212 instruments
 site/           the dashboard (static; reads live.json and research.json)
 tradingview/    Pine Script indicator showing the trend probability on any chart
 ```

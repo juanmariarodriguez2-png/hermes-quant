@@ -216,6 +216,23 @@ def test_a_missing_candle_freezes_that_market_instead_of_selling_it(sandbox):
     assert still["value"] > 0 and still["target"] > 0                # still held, still wanted
 
 
+def test_on_kraken_a_candle_met_during_an_outage_is_not_traded_later_the_same_day(sandbox):
+    """One run per candle, whatever that run managed to do: the rule the Kraken account has always had."""
+    kw = dict(mode="paper", offline=True, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    store = PriceStore(sandbox / "live" / "prices")
+    kept = {}
+    for inst in LIVE_INSTRUMENTS[4:]:                               # most markets failed to download tonight
+        kept[inst.symbol] = store.load(inst.symbol)
+        store.save(inst.symbol, kept[inst.symbol].iloc[:-1])
+    night = run_daily.run(now=MONDAY, **kw)
+    assert night["meta"]["data_outage"] and night["account"]["orders_today"] == []
+    for symbol, candles in kept.items():                            # by the afternoon the data is back
+        store.save(symbol, candles)
+    later = run_daily.run(now=datetime(2026, 11, 16, 14, 45, tzinfo=timezone.utc), **kw)
+    assert not later["meta"]["data_outage"] and later["account"]["orders_today"] == []
+    assert "traded" not in json.loads((sandbox / "live" / "state.json").read_text())
+
+
 def test_circuit_breaker_moves_the_account_to_cash(sandbox):
     kw = dict(mode="paper", offline=True, live_dir=sandbox / "live", site_dir=sandbox / "site")
     run_daily.run(now=MONDAY, **kw)

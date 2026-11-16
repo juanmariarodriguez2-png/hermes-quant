@@ -28,12 +28,14 @@ class CostModel:
 
     Defaults are Kraken's published schedule for a small account (Nov 2026):
     crypto spot 0.80% taker, tokenized stocks 0.08% taker, FX conversion 0.20%.
+    "stock" is the owner's optional basket of single stocks: the same tokenized venue
+    as the funds, so the same charges. The model itself never holds that class.
     """
 
-    fee: dict = field(default_factory=lambda: {"crypto": 0.0080, "equity": 0.0008, "real": 0.0008})
-    slippage: dict = field(default_factory=lambda: {"crypto": 0.0005, "equity": 0.0010, "real": 0.0010})
+    fee: dict = field(default_factory=lambda: {"crypto": 0.0080, "equity": 0.0008, "real": 0.0008, "stock": 0.0008})
+    slippage: dict = field(default_factory=lambda: {"crypto": 0.0005, "equity": 0.0010, "real": 0.0010, "stock": 0.0010})
     fx_fee: float = 0.0020                 # EUR <-> USD conversion for dollar-quoted assets
-    usd_classes: tuple = ("equity", "real")
+    usd_classes: tuple = ("equity", "real", "stock")
 
     def rate(self, cls: str) -> float:
         return self.fee.get(cls, 0.0) + self.slippage.get(cls, 0.0)
@@ -43,8 +45,9 @@ class CostModel:
 class TradingRules:
     lag: int = 1                           # backtest only: days between decision and execution
     rebalance_every: int = 7               # days between target updates
-    band_abs: dict = field(default_factory=lambda: {"crypto": 0.02, "equity": 0.02, "real": 0.02})
-    band_rel: dict = field(default_factory=lambda: {"crypto": 0.25, "equity": 0.25, "real": 0.25})
+    # single stocks are held in small slices (2-3% of the account), so their band is narrower
+    band_abs: dict = field(default_factory=lambda: {"crypto": 0.02, "equity": 0.02, "real": 0.02, "stock": 0.01})
+    band_rel: dict = field(default_factory=lambda: {"crypto": 0.25, "equity": 0.25, "real": 0.25, "stock": 0.25})
     min_ticket: float = 4.0                # euros; Kraken's minimum order is ~3.5-4 EUR
     min_exit_ticket: float = 1.0           # full exits may be smaller
     edge_fraction: float = 0.5             # after trading, stay this far inside the band (0 = at target)

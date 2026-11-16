@@ -52,6 +52,7 @@ jobs:
           # "yes" only if Kraken accepts tokenized-stock orders by API from the account
           # (it does not for accounts in the European Economic Area).
           HERMES_TOKENIZED_API: ${{ vars.HERMES_TOKENIZED_API || 'no' }}
+          HERMES_FAVOURITES: ${{ vars.HERMES_FAVOURITES || 'no' }}
           KRAKEN_API_KEY: ${{ secrets.KRAKEN_API_KEY }}
           KRAKEN_API_SECRET: ${{ secrets.KRAKEN_API_SECRET }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

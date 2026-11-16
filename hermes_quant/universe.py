@@ -73,7 +73,7 @@ class Instrument:
 
     symbol: str            # model-side name, e.g. "BTC" or "SPY"
     kraken_pair: str       # REST pair name, e.g. "XBTEUR" or "SPYxUSD"
-    asset_class: str       # crypto | equity | real
+    asset_class: str       # crypto | equity | real (the model's sleeves) | stock (the owner's basket)
     quote: str             # EUR | USD
     tokenized: bool = False  # xStocks need asset_class=tokenized_asset on the API
     perp: str | None = None  # matching Kraken Futures perpetual, if any
@@ -106,8 +106,17 @@ LIVE_INSTRUMENTS: list[Instrument] = [
 
 LIVE_BY_SYMBOL = {i.symbol: i for i in LIVE_INSTRUMENTS}
 
+
+def stock_instrument(symbol: str) -> Instrument:
+    """A single company's tokenized share on Kraken ("NVDA" -> NVDAxUSD). Class "stock"
+    is outside the model's three sleeves: only the owner's optional basket holds it
+    (hermes_quant/live/favourites.py)."""
+    return Instrument(symbol, f"{symbol}xUSD", "stock", "USD", tokenized=True)
+
+
 # Single stocks with deep tokenized markets on Kraken. The model scores them every day
-# (the "radar" on the dashboard) but does not trade them: there is no survivorship-free
-# history to validate a stock-picking rule on, and an unvalidated rule is a guess.
+# (the "radar" on the dashboard) but does not trade them: a study on the companies that
+# were in the S&P 500 on each date found no selection rule that beat simply holding the
+# index (research/10_stock_sleeve.py).
 STOCK_RADAR = ["NVDA", "TSLA", "AAPL", "MSFT", "AMZN", "GOOGL", "META", "AMD", "INTC", "AVGO", "NFLX",
                "ORCL", "PLTR", "MSTR", "COIN", "HOOD", "TSM", "ASML", "MU", "MRVL"]

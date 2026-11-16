@@ -47,11 +47,12 @@ class PriceStore:
         return combined
 
 
-def refresh_prices(store: PriceStore, instruments: list[Instrument]) -> dict[str, str]:
-    """Pull the latest completed daily candles for every instrument. Returns any
-    per-symbol errors instead of raising: one broken market must not stop the run."""
+def refresh_prices(store: PriceStore, instruments: list[Instrument], fx: bool = True) -> dict[str, str]:
+    """Pull the latest completed daily candles for every instrument (and, unless
+    ``fx=False``, the euro/dollar rate). Returns any per-symbol errors instead of
+    raising: one broken market must not stop the run."""
     errors: dict[str, str] = {}
-    for symbol, pair, tokenized in [(FX_SYMBOL, "EURUSD", False)] + [
+    for symbol, pair, tokenized in ([(FX_SYMBOL, "EURUSD", False)] if fx else []) + [
         (i.symbol, i.kraken_pair, i.tokenized) for i in instruments
     ]:
         try:
@@ -80,15 +81,21 @@ def venue_liquidity(df: pd.DataFrame, kraken_from: pd.Timestamp | None) -> pd.Se
 
 
 def build_live_panel(store: PriceStore, instruments: list[Instrument],
-                     start: str = "2015-01-01", listed_from: dict[str, pd.Timestamp] | None = None) -> Panel:
+                     start: str = "2015-01-01", listed_from: dict[str, pd.Timestamp] | None = None,
+                     end: pd.Timestamp | None = None) -> Panel:
     """Same conventions as the research panel: calendar days, euro prices, flat
     candles (and no trading) for tokenized stocks while their market is shut.
 
     Tokenized markets additionally pass through a liquidity gate: several of them are
-    listed but barely trade, and a stale price looks deceptively calm to a risk model."""
+    listed but barely trade, and a stale price looks deceptively calm to a risk model.
+
+    ``end`` fixes the last day of the panel (later candles are ignored), so that a
+    second panel can be lined up with the main one."""
     fx_raw = store.load(FX_SYMBOL)["close"]
     frames = {i.symbol: store.load(i.symbol) for i in instruments}
-    last = max(f.index[-1] for f in frames.values() if len(f))
+    if end is not None:
+        frames = {s: f[f.index <= end] for s, f in frames.items()}
+    last = end if end is not None else max(f.index[-1] for f in frames.values() if len(f))
     index = pd.date_range(start, last, freq="D")
     fx = fx_raw.reindex(index).ffill()
 

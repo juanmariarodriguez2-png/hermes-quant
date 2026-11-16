@@ -23,6 +23,8 @@ Built to fail safe
 * Money that moves without the model (a deposit, a withdrawal, something bought that
   the model cannot see) is recognised as a flow: the performance base and the peak
   move with it, so it neither flatters the return nor trips the circuit breaker.
+* The owner's basket of single stocks (favourites.py) is computed after the model and
+  apart from it. Switched off, or broken, it changes nothing the model does.
 
 Environment
 -----------
@@ -38,6 +40,9 @@ HERMES_TOKENIZED_API     "yes" if Kraken accepts tokenized-stock orders by API f
                          listed for the owner to place by hand on kraken.com
 HERMES_REBASE            "yes" once after a deposit or withdrawal: restart the
                          performance and drawdown clock from today's value
+HERMES_FAVOURITES        "yes" to let the basket of single stocks in config/favourites.json
+                         into the target (default "no": the stocks are scored and shown,
+                         and one the owner bought himself is valued, but none is traded)
 TELEGRAM_BOT_TOKEN/CHAT_ID  optional daily message
 """
 
@@ -60,7 +65,7 @@ from ..model import PROFILES, compute_features, target_weights
 from ..portfolio.execution import CostModel, TradingRules, plan_orders
 from ..report.snapshot import NAMES, model_snapshot
 from ..universe import LIVE_INSTRUMENTS, STOCK_RADAR, Instrument
-from . import monitors, notify
+from . import favourites, monitors, notify
 from .brokers import KrakenBroker, PaperBroker
 from .market import FX_SYMBOL, PriceStore, build_live_panel, live_regime, refresh_prices
 
@@ -131,17 +136,32 @@ def current_prices(instruments: list[Instrument], last_close: pd.Series, fx_clos
 
 
 def run(mode: str | None = None, profile: str | None = None, offline: bool = False,
-        live_dir: Path = LIVE, site_dir: Path = SITE, broker=None, now: datetime | None = None) -> dict:
+        live_dir: Path = LIVE, site_dir: Path = SITE, broker=None, now: datetime | None = None,
+        basket: favourites.Basket | None = None) -> dict:
     mode = mode or os.environ.get("HERMES_MODE", "paper")
     profile = profile or os.environ.get("HERMES_PROFILE", "balanced")
     cfg, rules, costs = PROFILES[profile], TradingRules(), CostModel()
-    by_symbol = {i.symbol: i for i in LIVE_INSTRUMENTS}
     now = now or _now()
     live_dir.mkdir(parents=True, exist_ok=True)
+
+    # The owner's list of single stocks. A list that cannot be read is reported and
+    # ignored: it must never stand between the model and its orders.
+    basket_error = ""
+    if basket is None:
+        try:
+            basket = favourites.load()
+        except Exception as exc:  # noqa: BLE001 - shown on the dashboard
+            basket_error = f"{type(exc).__name__}: {exc}"[:200]
+    basket_on = basket is not None and favourites.enabled()
 
     # 1-2. data and model -------------------------------------------------------------
     store = PriceStore(live_dir / "prices")
     data_errors = {} if offline else refresh_prices(store, LIVE_INSTRUMENTS)
+    stocks = favourites.instruments(basket) if basket else []
+    stock_errors = {} if offline else refresh_prices(store, stocks, fx=False)
+    stocks = [i for i in stocks if len(store.load(i.symbol))]
+    by_symbol = {i.symbol: i for i in LIVE_INSTRUMENTS + stocks}
+    names = {**NAMES, **(basket.stocks if basket else {})}
     instruments = [i for i in LIVE_INSTRUMENTS if len(store.load(i.symbol))]
     panel = build_live_panel(store, instruments)
     regime = live_regime(panel, cfg.regime_proxy, cfg.hmm_max_window) if cfg.regime else pd.DataFrame(index=panel.close.index)
@@ -149,20 +169,38 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     t = len(panel.close) - 1
     bar_date = panel.close.index[t]
     bar = bar_date.strftime("%Y-%m-%d")
-    symbols = list(panel.close.columns)
-    classes = [panel.classes[s] for s in symbols]
+    core = list(panel.close.columns)                        # the model's own markets
+    class_of = {**panel.classes, **{i.symbol: i.asset_class for i in stocks}}
 
     # A market is stale when its newest candle is older than the newest one anywhere:
     # its download failed today. (Tokenized stocks are forward-filled in the panel, so
     # this has to be read from the store, not from the panel.)
-    stale = sorted(s for s in symbols if store.load(s).index[-1] < bar_date)
+    stale = sorted(s for s in core if store.load(s).index[-1] < bar_date)
     fx_stale = FX_SYMBOL in data_errors or not np.isfinite(panel.eurusd.iloc[t])
-    outage = fx_stale or len(stale) > OUTAGE_SHARE * len(symbols)
+    outage = fx_stale or len(stale) > OUTAGE_SHARE * len(core)
 
     # 3. target -----------------------------------------------------------------------
     state_path = live_dir / "state.json"
     state = load_state(state_path, float(os.environ.get("HERMES_CAPITAL", "233.47")), profile, mode)
     allocation = target_weights(features, cfg, t)
+
+    # The basket is scored every day, switched on or not, so the dashboard can show what
+    # it would hold. It sees the model's filters but the model never sees it.
+    view, stock_close = None, {}
+    stock_stale = sorted(i.symbol for i in stocks if store.load(i.symbol).index[-1] < bar_date)
+    if stocks:
+        held = set(state.get("basket_target") or {})
+        try:
+            view = favourites.evaluate(store, basket, cfg, bar_date, held)
+            stock_close = view["last_close"]
+        except Exception as exc:  # noqa: BLE001 - the model carries on without the basket
+            basket_error = f"{type(exc).__name__}: {exc}"[:200]
+    symbols = core + [i.symbol for i in stocks if i.symbol in stock_close]
+    classes = [class_of[s] for s in symbols]
+    # The model's markets are always its to trade. A single stock is only while the
+    # basket is switched on; otherwise it is valued and left alone.
+    managed = np.array([class_of[s] != "stock" or basket_on for s in symbols])
+
     age = None if not state["target_date"] else (bar_date - pd.Timestamp(state["target_date"])).days
     fingerprint = hashlib.sha256(repr(cfg).encode()).hexdigest()[:12]      # a changed model means a new target
     due = age is None or age >= rules.rebalance_every or state.get("model") != fingerprint
@@ -174,9 +212,27 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
         state["profile"] = profile
         state["model"] = fingerprint
 
+    # The basket's target is kept apart from the model's, which it never alters. It is
+    # redrawn whenever the model's is (weekly) and whenever the basket itself changes:
+    # switched on, a different list or limit. It only takes money the model leaves idle;
+    # short of room, it shrinks.
+    basket_stamp = hashlib.sha256(repr(basket).encode()).hexdigest()[:12] if basket_on else None
+    if not basket_on:
+        state.pop("basket_target", None)
+        state.pop("basket_stamp", None)
+    elif view is not None and not outage and (refreshed or state.get("basket_stamp") != basket_stamp):
+        picks = view["weights"]
+        room = max(0.0, 1.0 - sum(state["target"].values()))
+        scale = min(1.0, room / sum(picks.values())) if picks else 0.0
+        state["basket_target"] = {s: w * scale for s, w in picks.items() if w * scale > 1e-9}
+        state["basket_stamp"] = basket_stamp
+    wanted = {**state["target"], **(state.get("basket_target") or {})}
+
     # 4. account, risk checks, orders ---------------------------------------------------
     last_close = panel.close.ffill().iloc[t]                # a missing candle must not zero a holding
-    prices, eurusd = current_prices(instruments, last_close, panel.eurusd.ffill().iloc[t], now, offline)
+    last_close = pd.concat([last_close, pd.Series(stock_close, dtype=float)])
+    prices, eurusd = current_prices(instruments + [by_symbol[s] for s in symbols[len(core):]], last_close,
+                                    panel.eurusd.ffill().iloc[t], now, offline)
     armed = mode == "live" and os.environ.get("HERMES_LIVE_ARMED") == "yes"
     # Kraken takes no tokenized-stock orders by API from accounts in the European Economic
     # Area: there the model sends none of them and lists them for the owner instead.
@@ -229,11 +285,12 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     if drawdown <= -MAX_DRAWDOWN_HALT and not state["halted"] and not outage:
         state["halted"] = True
         state["halt_reason"] = f"drawdown {drawdown:.1%} from peak on {bar}"
-    target = np.array([0.0 if state["halted"] else state["target"].get(s, 0.0) for s in symbols])
+    target = np.array([0.0 if state["halted"] else wanted.get(s, 0.0) for s in symbols])
 
     already_ran = state.get("last_bar") == bar
-    tradable = np.array([market_open(by_symbol[s], now) and s not in stale and np.isfinite(prices.get(s, np.nan))
-                         for s in symbols])
+    frozen = set(stale) | set(stock_stale)
+    tradable = managed & np.array([market_open(by_symbol[s], now) and s not in frozen and np.isfinite(prices.get(s, np.nan))
+                                   for s in symbols])
     if already_ran or outage:
         orders = np.zeros(len(symbols))
     else:
@@ -252,9 +309,9 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     # is a standing instruction, recomputed every run until the holdings match.
     manual_orders = []
     if by_hand.any() and not outage:
-        quoted = np.array([s not in stale and np.isfinite(prices.get(s, np.nan)) for s in symbols])
+        quoted = managed & np.array([s not in frozen and np.isfinite(prices.get(s, np.nan)) for s in symbols])
         pending = plan_orders(target, value, cash, by_hand & quoted, classes, costs, rules)
-        manual_orders = [{"symbol": s, "name": NAMES.get(s, s), "class": panel.classes[s], "notional_eur": float(n),
+        manual_orders = [{"symbol": s, "name": names.get(s, s), "class": class_of[s], "notional_eur": float(n),
                           "pair": by_symbol[s].kraken_pair, "market_open": bool(market_open(by_symbol[s], now))}
                          for s, n in zip(symbols, pending) if n != 0]
 
@@ -287,10 +344,23 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     for row in snapshot["assets"]:                        # what the live terminal needs to follow each market
         inst = by_symbol[row["symbol"]]
         row.update(pair=inst.kraken_pair, quote=inst.quote, tokenized=inst.tokenized)
-    positions = [{"symbol": s, "name": NAMES.get(s, s), "class": panel.classes[s], "units": units.get(s, 0.0),
+    positions = [{"symbol": s, "name": names.get(s, s), "class": class_of[s], "units": units.get(s, 0.0),
                   "price": prices.get(s), "value": float(v), "weight": float(v / nav) if nav else 0.0,
-                  "target": float(state["target"].get(s, 0.0))}
-                 for s, v in zip(symbols, value) if v > 0.01 or state["target"].get(s, 0.0) > 0]
+                  "target": float(wanted.get(s, 0.0)), "managed": bool(m)}
+                 for s, v, m in zip(symbols, value, managed) if v > 0.01 or wanted.get(s, 0.0) > 0]
+    held_value = dict(zip(symbols, value))
+    basket_view = {"enabled": basket_on, "error": basket_error, "rows": []}
+    if basket is not None:
+        rows = view["rows"] if view else [{"symbol": s, "name": n, "status": "no_data"} for s, n in basket.stocks.items()]
+        for row in rows:
+            s = row["symbol"]
+            row.update(target=float(wanted.get(s, 0.0)), units=units.get(s, 0.0), value=float(held_value.get(s, 0.0)),
+                       stale=s in stock_stale, price_now=prices.get(s))
+        basket_view.update(per_stock=basket.per_stock, max_stocks=basket.max_stocks, budget=basket.budget,
+                           enter=basket.enter, leave=basket.leave, min_history_days=basket.min_history_days,
+                           waiting=list(basket.waiting), rows=rows, errors=stock_errors,
+                           target_total=float(sum(r["target"] for r in rows)),
+                           invested=float(sum(r["value"] for r in rows) / nav) if nav else 0.0)
     done = trades[trades["status"].isin(["filled", "partial"])] if len(trades) else trades
     account_view = {
         "mode": mode, "armed": armed, "profile": profile, "inception": state["inception"],
@@ -307,14 +377,14 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
     out = {"meta": {"generated_at": state["last_run"], "bar_date": bar, "version": __version__,
                     "data_errors": data_errors, "stale_markets": stale, "data_outage": bool(outage),
                     "price_source": "kraken", "schedule_utc": SCHEDULE_UTC},
-           "account": account_view, "model": snapshot,
+           "account": account_view, "model": snapshot, "favourites": basket_view,
            "radar": [] if offline else monitors.stock_radar(STOCK_RADAR),
            "derivatives": [] if offline else monitors.derivatives_monitor()}
     site_dir.mkdir(parents=True, exist_ok=True)
     (site_dir / "live.json").write_text(json.dumps(out, default=float))
     (live_dir / "latest.json").write_text(json.dumps(
         {"meta": out["meta"], "account": {k: v for k, v in account_view.items() if k not in ("equity", "trades")},
-         "targets": state["target"]}, indent=2, default=float))
+         "targets": wanted}, indent=2, default=float))
     notify.send(notify.daily_message(out))
     return out
 
@@ -330,6 +400,12 @@ def main() -> None:
     for o in a["manual_orders"]:
         print(f"   BY HAND   {o['symbol']:6s} {o['notional_eur']:+9.2f} EUR  {'buy' if o['notional_eur'] > 0 else 'sell'} "
               f"{o['pair'][:-3]} on kraken.com" + ("" if o["market_open"] else "  (its market is closed right now)"))
+    fav = out["favourites"]
+    if fav["enabled"]:
+        picked = [f"{r['symbol']} {r['target']:.1%}" for r in fav["rows"] if r.get("target", 0.0) > 0]
+        print("   FAVOURITES basket on:", ", ".join(picked) if picked else "no stock qualifies today")
+    if fav["error"]:
+        print("   FAVOURITES ignored:", fav["error"])
     if a["flow_today"]:
         print(f"   EXTERNAL FLOW {a['flow_today']:+.2f} EUR: money moved without the model (deposit, withdrawal or an asset "
               "it cannot see). Treated as a flow, not as profit or loss.")

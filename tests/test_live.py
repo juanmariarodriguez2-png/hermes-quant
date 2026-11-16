@@ -12,7 +12,7 @@ import pandas as pd
 import pytest
 
 from hermes_quant.data import kraken
-from hermes_quant.live import run_daily
+from hermes_quant.live import favourites, run_daily
 from hermes_quant.live.brokers import KrakenBroker, PaperBroker
 from hermes_quant.live.market import PriceStore, build_live_panel, venue_liquidity
 from hermes_quant.portfolio.execution import CostModel
@@ -168,6 +168,12 @@ def sandbox(tmp_path):
 
 MONDAY = datetime(2026, 11, 16, 1, 25, tzinfo=timezone.utc)
 SATURDAY = datetime(2026, 11, 14, 1, 25, tzinfo=timezone.utc)
+
+
+@pytest.fixture(autouse=True)
+def _basket_switched_off(monkeypatch):
+    """Every test starts as production does: the basket of single stocks is off."""
+    monkeypatch.delenv("HERMES_FAVOURITES", raising=False)
 
 
 def test_daily_run_is_idempotent_and_respects_the_weekend(sandbox):
@@ -522,3 +528,196 @@ def test_a_real_fall_still_trips_the_breaker_in_live_mode(sandbox, monkeypatch):
     path.write_text(json.dumps(state))
     a = run_daily.run(now=datetime(2026, 11, 17, 1, 25, tzinfo=timezone.utc), broker=b, **kw)["account"]
     assert a["flow_today"] == 0.0 and a["halted"]
+
+
+# ----------------------------------------------------------------------------- the owner's basket of single stocks
+
+STOCKS = {"NVDA": "Nvidia", "TSLA": "Tesla", "AAPL": "Apple", "GOOGL": "Alphabet", "MSFT": "Microsoft", "AMZN": "Amazon"}
+ANY_TREND = favourites.Basket(stocks=STOCKS, enter=0.001, leave=0.001)      # holds four of them whatever the market did
+STOCK_SYMBOLS = {**LIVE_BY_SYMBOL, **{i.symbol: i for i in favourites.instruments(ANY_TREND)}}
+
+
+def test_the_basket_rule_has_few_seats_and_does_not_flip_at_the_line():
+    b = favourites.Basket(stocks={s: s for s in "ABCDEF"}, per_stock=0.025, max_stocks=2)
+    ok = dict.fromkeys("ABCDEF", True)
+    nan = float("nan")
+    # nothing held: the two strongest trends at 55% or more come in, each at the same size
+    assert favourites.select({"A": 0.9, "B": 0.6, "C": 0.56, "D": 0.54, "E": 0.2, "F": nan}, ok, set(), b) == {"A": 0.025, "B": 0.025}
+    # between 45% and 55% a holding stays and a newcomer waits; a stronger newcomer cannot take a seat that is in use
+    assert set(favourites.select({"A": 0.5, "B": 0.46, "C": 0.95}, ok, {"A", "B"}, b)) == {"A", "B"}
+    assert set(favourites.select({"A": 0.5, "C": 0.5}, ok, {"A"}, b)) == {"A"}
+    # below 45% it goes, and the seat goes to the strongest of those waiting
+    assert set(favourites.select({"A": 0.44, "B": 0.46, "C": 0.7, "D": 0.95}, ok, {"A", "B"}, b)) == {"B", "D"}
+    # a stock that may not be held (too new, or a market nobody trades) is never held, whatever its trend
+    assert favourites.select({"A": 0.99, "B": 0.6}, {"A": False, "B": True}, {"A"}, b) == {"B": 0.025}
+    assert favourites.select({"Z": 0.99}, {"Z": True}, set(), b) == {}             # not on the list
+
+
+def test_the_favourites_file_is_small_by_construction_and_typos_are_refused(tmp_path):
+    shipped = favourites.load()
+    assert shipped.budget <= 0.10 + 1e-12 and shipped.per_stock <= 0.03
+    assert not set(shipped.stocks) & set(LIVE_BY_SYMBOL)
+
+    def refused(**settings) -> bool:
+        path = tmp_path / "f.json"
+        path.write_text(json.dumps({"stocks": {"NVDA": "Nvidia"}, **settings}))
+        try:
+            favourites.load(path)
+        except ValueError:
+            return True
+        return False
+
+    assert not refused(per_stock=0.03, max_stocks=5)
+    assert refused(per_stock=2.5)                                    # "2.5" meant as a percentage
+    assert refused(per_stock=0.10, max_stocks=4)                     # 40% of the account
+    assert refused(max_stocks=0) and refused(per_stock=0.0)
+    assert refused(enter=0.4, leave=0.6) and refused(min_history_days=10)
+    assert refused(stocks={"SPY": "already the model's"}) and refused(stocks={"nvda corp": "not a ticker"})
+    assert refused(budget=0.5)                                       # a setting that does not exist
+
+
+def test_a_stock_too_new_for_the_trend_filter_is_not_held(sandbox):
+    store = PriceStore(sandbox / "live" / "prices")
+    bar = store.load("BTC").index[-1]
+    old_enough = favourites.evaluate(store, ANY_TREND, run_daily.PROFILES["balanced"], bar, set())
+    assert len(old_enough["weights"]) == 4 and set(old_enough["weights"].values()) == {0.025}
+    young = favourites.Basket(stocks=STOCKS, enter=0.001, leave=0.001, min_history_days=10**6)
+    view = favourites.evaluate(store, young, run_daily.PROFILES["balanced"], bar, set())
+    assert view["weights"] == {} and {r["status"] for r in view["rows"]} == {"too_new"}
+    unlisted = favourites.Basket(stocks={"ZZZZ": "Not listed anywhere"})
+    assert favourites.evaluate(store, unlisted, run_daily.PROFILES["balanced"], bar, set())["rows"][0]["status"] == "no_data"
+
+
+def test_the_basket_is_off_until_switched_on_and_never_changes_what_the_model_does(sandbox, monkeypatch):
+    shutil.copytree(sandbox / "live", sandbox / "with")
+    off = run_daily.run(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    state_off = json.loads((sandbox / "live" / "state.json").read_text())
+    assert not off["favourites"]["enabled"] and "basket_target" not in state_off
+    assert {r["symbol"] for r in off["favourites"]["rows"]} == set(STOCKS)           # scored and shown all the same
+    assert not [o for o in off["account"]["orders_today"] if o["symbol"] in STOCKS]
+    assert not [p for p in off["account"]["positions"] if p["class"] == "stock"]
+
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    on = run_daily.run(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "with", site_dir=sandbox / "site2")
+    state_on = json.loads((sandbox / "with" / "state.json").read_text())
+    assert state_on["target"] == state_off["target"] and state_on["model"] == state_off["model"]
+    basket = state_on["basket_target"]
+    assert len(basket) == 4 and set(basket) <= set(STOCKS)
+    assert sum(basket.values()) == pytest.approx(ANY_TREND.budget) and max(basket.values()) <= ANY_TREND.per_stock + 1e-12
+    orders = lambda out: {o["symbol"]: o["notional_eur"] for o in out["account"]["orders_today"]}      # noqa: E731
+    for symbol, euros in orders(off).items():                                         # the model's own orders are the same
+        assert orders(on)[symbol] == pytest.approx(euros)
+    bought = {s: n for s, n in orders(on).items() if s in STOCKS}
+    assert set(bought) == set(basket) and all(0 < n <= ANY_TREND.per_stock * on["account"]["nav"] for n in bought.values())
+    held = [p for p in on["account"]["positions"] if p["class"] == "stock"]
+    assert len(held) == 4 and all(p["managed"] and p["value"] > 0 for p in held)
+    assert on["favourites"]["invested"] <= ANY_TREND.budget
+
+
+def test_the_basket_only_uses_money_the_model_leaves_idle(sandbox, monkeypatch):
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    real = run_daily.target_weights
+
+    def nearly_fully_invested(features, cfg, t):
+        allocation = real(features, cfg, t)
+        allocation.weights = allocation.weights * (0.96 / allocation.weights.sum())
+        return allocation
+
+    monkeypatch.setattr(run_daily, "target_weights", nearly_fully_invested)
+    run_daily.run(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    state = json.loads((sandbox / "live" / "state.json").read_text())
+    assert sum(state["target"].values()) == pytest.approx(0.96)
+    assert sum(state["basket_target"].values()) == pytest.approx(0.04)                # not the 10% it would like
+    assert sum(state["target"].values()) + sum(state["basket_target"].values()) <= 1.0 + 1e-9
+
+
+def _stock_rules():
+    rules = {i.kraken_pair: {"price_decimals": 2, "lot_decimals": 8, "ordermin": 1e-8, "costmin": 0.5} for i in STOCK_SYMBOLS.values()}
+    return {**rules, "EURUSD": RULES["EURUSD"]}
+
+
+def test_on_a_european_account_the_basket_is_listed_for_the_owner_not_sent(sandbox, monkeypatch):
+    monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.delenv("HERMES_TOKENIZED_API", raising=False)
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    ex = RefusesTokenized({"ZEUR": 233.47})
+    b = KrakenBroker(ex, STOCK_SYMBOLS, pair_rules=_stock_rules(), armed=True, pause=0.0, tokenized_via_api=False)
+    out = run_daily.run(mode="live", offline=True, now=MONDAY, broker=b, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    assert not [o for o in ex.sent if o["tokenized"] or o["pair"] == "EURUSD"]         # no stock order, no dollars bought
+    by_hand = {o["symbol"]: o for o in out["account"]["manual_orders"]}
+    stocks = {s: o for s, o in by_hand.items() if o["class"] == "stock"}
+    assert len(stocks) == 4 and all(o["notional_eur"] > 0 and o["pair"] == f"{s}xUSD" for s, o in stocks.items())
+    assert sum(o["notional_eur"] for o in by_hand.values()) <= out["account"]["cash"]
+
+
+def test_a_stock_the_owner_bought_himself_is_valued_but_left_alone_while_the_basket_is_off(sandbox, monkeypatch):
+    monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.delenv("HERMES_TOKENIZED_API", raising=False)
+    ex = RefusesTokenized({"ZEUR": 200.0, "NVDAx.T": 0.2})
+    b = KrakenBroker(ex, STOCK_SYMBOLS, pair_rules=_stock_rules(), armed=True, pause=0.0, tokenized_via_api=False)
+    a = run_daily.run(mode="live", offline=True, now=MONDAY, broker=b, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")["account"]
+    nvda = next(p for p in a["positions"] if p["symbol"] == "NVDA")
+    assert nvda["value"] > 5.0 and nvda["class"] == "stock" and not nvda["managed"] and nvda["target"] == 0.0
+    assert a["nav"] == pytest.approx(200.0 + nvda["value"])                            # counted in the account's value
+    assert a["unrecognised"] == {} and a["flow_today"] == 0.0
+    assert "NVDA" not in {o["symbol"] for o in a["manual_orders"]}                     # and nobody is told to sell it
+
+
+def test_switching_the_basket_off_sells_nothing(sandbox, monkeypatch):
+    kw = dict(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    on = run_daily.run(**kw)
+    held = {p["symbol"]: p["value"] for p in on["account"]["positions"] if p["class"] == "stock"}
+    assert len(held) == 4
+
+    monkeypatch.setenv("HERMES_FAVOURITES", "no")
+    path = sandbox / "live" / "state.json"
+    state = json.loads(path.read_text())
+    state["last_bar"] = None                                         # a new day
+    path.write_text(json.dumps(state))
+    off = run_daily.run(**kw)
+    assert "basket_target" not in json.loads(path.read_text())
+    assert not [o for o in off["account"]["orders_today"] if o["symbol"] in STOCKS]
+    after = {p["symbol"]: p for p in off["account"]["positions"] if p["class"] == "stock"}
+    assert set(after) == set(held) and all(not p["managed"] and p["target"] == 0.0 for p in after.values())
+
+
+def test_the_circuit_breaker_sells_the_basket_too(sandbox, monkeypatch):
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    kw = dict(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    assert [p for p in run_daily.run(**kw)["account"]["positions"] if p["class"] == "stock" and p["value"] > 0]
+    path = sandbox / "live" / "state.json"
+    state = json.loads(path.read_text())
+    state.update(peak_nav=state["nav"] * 1.5, last_bar=None)
+    path.write_text(json.dumps(state))
+    out = run_daily.run(**kw)
+    assert out["account"]["halted"] and out["account"]["invested_pct"] == pytest.approx(0.0, abs=0.02)
+
+
+def test_a_stock_whose_candle_is_missing_today_is_not_traded(sandbox, monkeypatch):
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    store = PriceStore(sandbox / "live" / "prices")
+    for symbol in STOCKS:                                            # every stock's download failed tonight
+        store.save(symbol, store.load(symbol).iloc[:-1])
+    out = run_daily.run(mode="paper", offline=True, now=MONDAY, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    assert all(r["stale"] for r in out["favourites"]["rows"])
+    traded = {o["symbol"] for o in out["account"]["orders_today"]}
+    assert not traded & set(STOCKS) and {"SPY", "GLD"} <= traded     # the model's own markets trade as usual
+    assert out["meta"]["stale_markets"] == [] and not out["meta"]["data_outage"]
+
+
+def test_a_broken_favourites_file_is_reported_and_the_model_carries_on(sandbox, monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_FAVOURITES", "yes")
+    bad = tmp_path / "favourites.json"
+    bad.write_text('{"stocks": {"NVDA": "Nvidia"}, "per_stock": 25}')
+    monkeypatch.setattr(favourites, "CONFIG", bad)
+    out = run_daily.run(mode="paper", offline=True, now=MONDAY, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    assert "per_stock" in out["favourites"]["error"] and not out["favourites"]["enabled"]
+    assert {"SPY", "GLD"} <= {o["symbol"] for o in out["account"]["orders_today"]}
+    assert not [p for p in out["account"]["positions"] if p["class"] == "stock"]
+
+
+def test_the_nightly_workflow_passes_the_basket_switch_and_defaults_to_off():
+    workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "daily.yml").read_text()
+    assert "HERMES_FAVOURITES: ${{ vars.HERMES_FAVOURITES || 'no' }}" in workflow
+    assert not favourites.enabled()

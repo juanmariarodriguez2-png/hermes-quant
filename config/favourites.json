@@ -1,0 +1,15 @@
+{
+  "stocks": {
+    "NVDA": "Nvidia",
+    "TSLA": "Tesla",
+    "AAPL": "Apple",
+    "GOOGL": "Alphabet",
+    "MSFT": "Microsoft",
+    "AMZN": "Amazon",
+    "META": "Meta",
+    "SPCX": "SpaceX"
+  },
+  "per_stock": 0.025,
+  "max_stocks": 4,
+  "waiting": ["Anthropic"]
+}

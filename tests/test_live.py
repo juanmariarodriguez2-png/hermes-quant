@@ -729,6 +729,23 @@ def test_a_broken_favourites_file_is_reported_and_the_model_carries_on(sandbox, 
     assert not [p for p in out["account"]["positions"] if p["class"] == "stock"]
 
 
+def test_if_scoring_the_basket_fails_a_stock_in_the_account_is_still_valued(sandbox, monkeypatch):
+    monkeypatch.delenv("HERMES_REBASE", raising=False)
+    monkeypatch.delenv("HERMES_TOKENIZED_API", raising=False)
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("scoring failed")
+
+    monkeypatch.setattr(favourites, "evaluate", broken)
+    ex = RefusesTokenized({"ZEUR": 200.0, "NVDAx.T": 0.2})
+    b = KrakenBroker(ex, STOCK_SYMBOLS, pair_rules=_stock_rules(), armed=True, pause=0.0, tokenized_via_api=False)
+    out = run_daily.run(mode="live", offline=True, now=MONDAY, broker=b, basket=ANY_TREND, live_dir=sandbox / "live", site_dir=sandbox / "site")
+    nvda = next(p for p in out["account"]["positions"] if p["symbol"] == "NVDA")
+    assert nvda["value"] > 5.0 and out["account"]["nav"] == pytest.approx(200.0 + nvda["value"])
+    assert "scoring failed" in out["favourites"]["error"]
+    assert {"SPY", "GLD"} <= {o["symbol"] for o in out["account"]["manual_orders"]}      # the model's own work is unaffected
+
+
 def test_the_nightly_workflow_passes_the_basket_switch_and_defaults_to_off():
     workflow = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "daily.yml").read_text()
     assert "HERMES_FAVOURITES: ${{ vars.HERMES_FAVOURITES || 'no' }}" in workflow

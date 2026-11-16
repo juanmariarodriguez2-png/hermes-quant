@@ -195,6 +195,12 @@ def run(mode: str | None = None, profile: str | None = None, offline: bool = Fal
             stock_close = view["last_close"]
         except Exception as exc:  # noqa: BLE001 - the model carries on without the basket
             basket_error = f"{type(exc).__name__}: {exc}"[:200]
+            # a stock already in the account must still be valued: its last candle, in euros
+            fx_close = float(panel.eurusd.ffill().iloc[t])
+            for inst in stocks:
+                candles = store.load(inst.symbol)[:bar_date]
+                if len(candles) and fx_close > 0:
+                    stock_close[inst.symbol] = float(candles["close"].iloc[-1]) / fx_close
     symbols = core + [i.symbol for i in stocks if i.symbol in stock_close]
     classes = [class_of[s] for s in symbols]
     # The model's markets are always its to trade. A single stock is only while the

@@ -123,6 +123,8 @@ El modelo compra empresas a través de los fondos de índice, porque ninguna reg
 
 **Cómo se apaga:** borra la variable o ponla en `no`. Apagarla **no vende nada**: las acciones que tengas se quedan en la cuenta, valoradas pero fuera del modelo, hasta que las vendas tú. Lo mismo vale para una acción de la lista que compres por tu cuenta con la cesta apagada: el bot la ve, la cuenta en el valor de la cuenta y no la toca.
 
+Con la cesta **encendida**, en cambio, las acciones de la lista las lleva la regla: si tienes una que la regla no quiere en ese momento (por ejemplo, una comprada por tu cuenta que está en tendencia bajista), el bot propondrá venderla.
+
 **Cómo se cambia la lista:** edita `config/favourites.json` (el símbolo de la acción y su nombre). Solo sirven acciones que Kraken tenga tokenizadas y que de verdad se negocien; el panel dice de cada una si entra, si espera o por qué no. Los dos límites (`per_stock` y `max_stocks`) también están ahí; el programa rechaza el fichero si, multiplicados, pasan del 30 % de la cuenta, y si no puede leerlo sigue operando sin la cesta y lo avisa.
 
 **Lo que conviene saber antes**

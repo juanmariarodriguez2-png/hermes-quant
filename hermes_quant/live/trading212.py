@@ -107,10 +107,23 @@ def _signed_quantity(order: dict) -> float:
 
 
 HISTORY_TRIES = 3          # how many times a just-executed order is looked up in the history before falling back
+SNAPSHOT_TRIES = 3         # how many times the account is re-read while an order keeps moving underneath
+
+
+def _progress(orders: list[dict]) -> list[tuple]:
+    """What a list of working orders looks like at one instant: enough to tell whether any of them moved."""
+    return sorted((o.get("id"), float(o.get("filledQuantity") or 0), o.get("status")) for o in orders)
 
 
 class Trading212Broker:
-    """Read balances before sizing purchases; never retry an ambiguous placement."""
+    """Read balances before sizing purchases; never retry an ambiguous placement.
+
+    Known limit. There is no journal written before each order, so what protects against
+    doing a day's work twice is the account itself: every run starts from what the account
+    really holds and only asks for what is still missing. If a run dies after an order and
+    before its record is saved, a second run on the same day can therefore place another
+    capped order towards the same target, sooner than the one-round-a-day pacing intends.
+    It can never take a position past its target."""
 
     def __init__(self, client, listings: dict[str, Listing], *, armed: bool = False, max_order_eur: float = 100.0,
                  wait_seconds: float = 30.0, pause: float = 1.0, min_order_eur: float = 1.0, decimals: int = 4, sleep=time.sleep,
@@ -131,11 +144,24 @@ class Trading212Broker:
         self.refresh()
 
     def refresh(self) -> None:
-        # Working orders first, holdings after: an order placed by an earlier run is then either
-        # still in the first list or already in the second, never in neither.
-        pending = self.client.pending_orders()
-        positions = self.client.positions()
-        summary = self.client.summary()
+        """One consistent picture of the account: working orders, holdings, cash.
+
+        Working orders are read first and holdings after, so an order placed by an earlier
+        run is either still in the first list or already in the second, never in neither.
+        If something is working, it could also fill between the holdings read and the cash
+        read, pairing old shares with new cash; so the working orders are read once more and,
+        if any of them moved meanwhile, the whole picture is taken again."""
+        for _ in range(SNAPSHOT_TRIES):
+            pending = self.client.pending_orders()
+            positions = self.client.positions()
+            summary = self.client.summary()
+            if not pending:                                    # nothing working: nothing could have filled in between
+                break
+            again = self.client.pending_orders()
+            moved = _progress(again) != _progress(pending)
+            pending = again
+            if not moved:
+                break
         self._summary, self._positions, self._pending = summary, positions, pending
 
     def cash(self) -> float:

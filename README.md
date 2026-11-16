@@ -76,7 +76,7 @@ There is one door for single stocks, and it is outside the model: the owner's **
 - **Survivorship-free crypto universe:** all 688 USDT markets Binance has ever listed, delisted ones included (Terra, FTX...). Membership is decided day by day from trailing volume.
 - **Trial registry:** 77 attempts are counted. The Deflated Sharpe Ratio on the design sample is 95% treating all of them as independent.
 - **Block bootstrap** for confidence intervals; Newey-West errors for regressions; ECB deposit rate for excess returns.
-- **225 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
+- **227 automated tests**, including look-ahead tests (rewrite the future, nothing decided earlier may change) and the full live path against a simulated exchange.
 - **Independent adversarial review** of the code by OpenAI Codex before the hold-out was opened: 16 findings, all addressed ([docs/RESEARCH.md](docs/RESEARCH.md#independent-review)).
 
 ## Run it
@@ -117,7 +117,7 @@ hermes_quant/
   live/         daily runner, price store, paper broker, Kraken and Trading 212 brokers, monitors, favourites basket
   model.py      the model: features and target weights
 research/       numbered scripts, one per research step, and their results
-tests/          225 tests
+tests/          227 tests
 config/         the owner's list of single stocks, and the map of markets to Trading 212 instruments
 site/           the dashboard (static; reads live.json and research.json)
 tradingview/    Pine Script indicator showing the trend probability on any chart

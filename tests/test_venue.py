@@ -395,3 +395,47 @@ def test_the_order_planner_counts_value_held_outside_the_plan_without_spending_i
     assert beside == pytest.approx(2 * alone) and beside < 1000.0          # twice the target in euros, still paid from the cash
     assert plan_orders(*args, outside=0.0)[0] == alone
     assert plan_orders(np.array([0.9]), np.array([0.0]), 100.0, np.array([True]), ["equity"], CostModel(), TradingRules(), outside=5000.0)[0] <= 100.0
+
+
+class FillsWhileBeingRead(Account):
+    """A working order that fills at the worst moment: after the holdings were read, before the cash."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.late_fill = None
+
+    def positions(self):
+        result = super().positions()
+        if self.late_fill:                                     # the fill lands right after this read
+            ticker, shares, cost = self.late_fill
+            self.late_fill = None
+            self.holdings[ticker] = self.holdings.get(ticker, 0.0) + shares
+            self.cash_balance -= cost
+            self.orders[1]["status"], self.orders[1]["filledQuantity"] = "FILLED", shares
+        return result
+
+
+def test_the_account_is_never_pictured_with_old_shares_and_new_cash():
+    api = FillsWhileBeingRead(cash=1000.0)
+    api.instrument_list, api.exchange_list, api.fill_prices, api.fx = [dict(i) for i in INSTRUMENTS], EXCHANGES, dict(FILL), {"EUR": EUR, "USD": USD}
+    api.orders[1] = {"id": 1, "ticker": "PPFBd_EQ", "instrument": {"ticker": "PPFBd_EQ"}, "initiatedFrom": "API",
+                     "quantity": 1.0, "filledQuantity": 0.0, "status": "NEW"}       # left working by an earlier run
+    api.late_fill = ("PPFBd_EQ", 1.0, 68.0)
+    listings, _ = t212.resolve({"GLD": {"isin": ["IE00B4ND3602"]}}, api.instrument_list)
+    broker = t212.Trading212Broker(api, listings, sleep=lambda seconds: None)
+    assert broker.units() == {"GLD": 1.0} and broker.pending() == {}
+    assert broker.cash() + sum(broker.units()[s] * broker.prices()[s] for s in broker.units()) == pytest.approx(1000.0)
+
+
+def test_a_kraken_error_can_never_carry_the_credentials(monkeypatch):
+    from hermes_quant.data import kraken
+
+    class Echo:
+        def json(self):
+            return {"error": ["EAPI:Invalid key my-key-123 / c2VjcmV0"]}
+
+    monkeypatch.setattr(kraken.requests, "post", lambda *args, **kwargs: Echo())
+    client = kraken.KrakenClient("my-key-123", "c2VjcmV0")
+    with pytest.raises(kraken.KrakenError) as caught:
+        client.balances()
+    assert "my-key-123" not in str(caught.value) and "c2VjcmV0" not in str(caught.value) and "Invalid key" in str(caught.value)

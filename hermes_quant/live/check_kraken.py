@@ -82,6 +82,8 @@ def check(client, state: dict, now=None) -> list[Row]:
     if broker is None or rules is None or not eurusd:
         return rows
 
+    raw = {k: v for k, v in sorted(client.balances().items()) if v > 0}
+    rows.append(("balance names at Kraken", True, ", ".join(f"{k}={v:.8g}" for k, v in raw.items()) or "none"))
     held = broker.units()
     target = {s: w for s, w in state.get("target", {}).items() if s in by_symbol and w > 0}
     prices = reference_prices(sorted(set(target) | set(held) | {CRYPTO_PROBE[0]}), by_symbol, eurusd)

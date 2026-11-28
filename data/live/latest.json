@@ -1,7 +1,7 @@
 {
   "meta": {
-    "generated_at": "2026-11-27T23:33:59Z",
-    "bar_date": "2026-11-26",
+    "generated_at": "2026-11-28T08:57:09Z",
+    "bar_date": "2026-11-27",
     "version": "2.0.0",
     "data_errors": {},
     "stale_markets": [],
@@ -18,27 +18,27 @@
     "venue_env": null,
     "unavailable": {},
     "initial_capital": 233.47,
-    "nav": 229.03204882346262,
+    "nav": 228.90992117515023,
     "cash": 121.4709,
-    "invested_pct": 0.4696336140553435,
+    "invested_pct": 0.4693506538449391,
     "other_value": 0.0,
-    "return_since_inception": -0.019008657114564564,
+    "return_since_inception": -0.019531754935750878,
     "peak_nav": 233.473281692428,
-    "drawdown": -0.019022445895184537,
+    "drawdown": -0.019545536363725913,
     "halted": false,
-    "target_date": "2026-11-20",
-    "target_refreshed_today": false,
-    "next_target_refresh_in_days": 1,
+    "target_date": "2026-11-27",
+    "target_refreshed_today": true,
+    "next_target_refresh_in_days": 7,
     "positions": [
       {
         "symbol": "SPY",
         "name": "S&P 500",
         "class": "equity",
         "units": 0.048593,
-        "price": 667.5125162883205,
-        "value": 32.436435703998356,
-        "weight": 0.14162400358650368,
-        "target": 0.11506527031677909,
+        "price": 667.4254683086036,
+        "value": 32.432205781519976,
+        "weight": 0.14168108404836025,
+        "target": 0.10581928749875785,
         "managed": true,
         "instrument": "SPYxUSD",
         "live_feed": true
@@ -48,10 +48,10 @@
         "name": "Nasdaq 100",
         "class": "equity",
         "units": 0.02303,
-        "price": 594.0927691287749,
-        "value": 13.681956473035685,
-        "weight": 0.0597381743879072,
-        "target": 0.05035895325636336,
+        "price": 594.068548129051,
+        "value": 13.681398663412043,
+        "weight": 0.059767608992987824,
+        "target": 0.04574199602562169,
         "managed": true,
         "instrument": "QQQxUSD",
         "live_feed": true
@@ -61,10 +61,10 @@
         "name": "Gold",
         "class": "real",
         "units": 0.17549,
-        "price": 306.76908305328857,
-        "value": 53.83490638502161,
-        "weight": 0.23505403135312924,
-        "target": 0.23999416167659204,
+        "price": 306.7204227347942,
+        "value": 53.82636698572904,
+        "weight": 0.23514213236980602,
+        "target": 0.22583249584963896,
         "managed": true,
         "instrument": "GLDxUSD",
         "live_feed": true
@@ -74,25 +74,34 @@
         "name": "Silver",
         "class": "real",
         "units": 0.205367,
-        "price": 37.034496948083124,
-        "value": 7.605663534736987,
-        "weight": 0.03320785703925399,
-        "target": 0.04606919710460101,
+        "price": 36.5047585090919,
+        "value": 7.496872740736676,
+        "weight": 0.03275031812623119,
+        "target": 0.028572464546669778,
         "managed": true,
         "instrument": "SLVxUSD",
         "live_feed": true
       }
     ],
     "orders_today": [],
-    "manual_orders": [],
+    "manual_orders": [
+      {
+        "symbol": "SPY",
+        "name": "S&P 500",
+        "class": "equity",
+        "notional_eur": -5.181235426349856,
+        "pair": "SPYxUSD",
+        "market_open": false
+      }
+    ],
     "flow_today": 0.0,
     "flows": [],
     "unrecognised": {}
   },
   "targets": {
-    "SPY": 0.11506527031677909,
-    "QQQ": 0.05035895325636336,
-    "GLD": 0.23999416167659204,
-    "SLV": 0.04606919710460101
+    "SPY": 0.10581928749875785,
+    "QQQ": 0.04574199602562169,
+    "GLD": 0.22583249584963896,
+    "SLV": 0.028572464546669778
   }
 }
